@@ -1,6 +1,6 @@
 const { Router } = require('express');
 const db = require('../db/database');
-const { inviteToOrg, listOrgMembers, listInvites, revokeInvite } = require('../services/chatgpt-api-client');
+const { checkToken, inviteToOrg, listOrgMembers, listInvites, revokeInvite } = require('../services/chatgpt-api-client');
 
 const router = Router();
 
@@ -74,7 +74,7 @@ router.post('/:id/sync', async (req, res) => {
   }
 
   if (membersResult.success) {
-    const apiMembers = membersResult.data?.members || membersResult.data || [];
+    const apiMembers = membersResult.data?.items || membersResult.data?.members || membersResult.data || [];
     for (const m of apiMembers) {
       const email = m.email || m.user?.email;
       if (!email) continue;
@@ -90,7 +90,7 @@ router.post('/:id/sync', async (req, res) => {
   }
 
   if (invitesResult.success) {
-    const apiInvites = invitesResult.data?.invites || invitesResult.data || [];
+    const apiInvites = invitesResult.data?.items || invitesResult.data?.invites || invitesResult.data || [];
     for (const inv of apiInvites) {
       const email = inv.email;
       if (!email) continue;
@@ -182,7 +182,7 @@ router.post('/:id/revoke', async (req, res) => {
   const invitesResult = await listInvites(token);
   if (!invitesResult.success) return res.json(invitesResult);
 
-  const invites = invitesResult.data?.invites || invitesResult.data || [];
+  const invites = invitesResult.data?.items || invitesResult.data?.invites || invitesResult.data || [];
   let revoked = 0, failed = 0;
 
   for (const invite of invites) {
@@ -271,22 +271,14 @@ router.post('/validate-all', async (req, res) => {
       continue;
     }
 
-    try {
-      const r = await fetch('https://chatgpt.com/backend-api/me', {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
-      if (r.ok) {
-        db.prepare(`UPDATE organizations SET sync_status = 'healthy', sync_error = NULL, last_synced = CURRENT_TIMESTAMP WHERE id = ?`).run(org.id);
-        healthy++;
-      } else {
-        const status = r.status === 403 || r.status === 401 ? 'invalid' : 'failed';
-        db.prepare(`UPDATE organizations SET sync_status = ?, sync_error = ?, last_synced = CURRENT_TIMESTAMP WHERE id = ?`)
-          .run(status, `HTTP ${r.status}`, org.id);
-        invalid++;
-      }
-    } catch (err) {
-      db.prepare(`UPDATE organizations SET sync_status = 'failed', sync_error = ?, last_synced = CURRENT_TIMESTAMP WHERE id = ?`)
-        .run(err.message, org.id);
+    const result = await checkToken(token);
+    if (result.success) {
+      db.prepare(`UPDATE organizations SET sync_status = 'healthy', sync_error = NULL, last_synced = CURRENT_TIMESTAMP WHERE id = ?`).run(org.id);
+      healthy++;
+    } else {
+      const status = result.error?.includes('403') || result.error?.includes('401') ? 'invalid' : 'failed';
+      db.prepare(`UPDATE organizations SET sync_status = ?, sync_error = ?, last_synced = CURRENT_TIMESTAMP WHERE id = ?`)
+        .run(status, result.error, org.id);
       invalid++;
     }
   }
