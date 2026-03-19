@@ -33,8 +33,8 @@ export function CsvImportDialog({ onImported }) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="sm" className="gap-2">
-          <Upload className="h-4 w-4" /> Import CSV
+        <Button size="sm" className="gap-1.5">
+          <Upload className="h-3.5 w-3.5" /> + Thêm Team
         </Button>
       </DialogTrigger>
       <DialogContent>
