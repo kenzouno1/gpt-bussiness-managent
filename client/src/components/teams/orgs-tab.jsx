@@ -1,11 +1,12 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { Search, RefreshCw, Building2, Users, Send, CheckCircle, CheckSquare, Square, ShieldCheck, AlertTriangle } from 'lucide-react';
+import { Search, RefreshCw, Building2, Users, Send, CheckCircle, CheckSquare, Square, ShieldCheck, AlertTriangle, Upload } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { StatsBar } from '@/components/layout/stats-bar';
 import { OrgCard } from '@/components/orgs/org-card';
 import { OrgDetailDialog } from '@/components/orgs/org-detail-dialog';
+import { CsvImportDialog } from '@/components/accounts/csv-import-dialog';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
 
@@ -137,6 +138,7 @@ export function OrgsTab() {
           onClick={() => { setSelectMode(!selectMode); setSelected(new Set()); }}>
           <CheckSquare className="h-3.5 w-3.5" /> {selectMode ? 'Hủy chọn' : 'Chọn'}
         </Button>
+        <CsvImportDialog onImported={() => { loadOrgs(); validateTokens(); }} />
         <Button variant="outline" size="sm" onClick={validateTokens} disabled={validating} className="gap-1.5">
           <RefreshCw className={`h-3.5 w-3.5 ${validating ? 'animate-spin' : ''}`} />
           {validating ? 'Đang kiểm tra...' : 'Đồng bộ tất cả'}
