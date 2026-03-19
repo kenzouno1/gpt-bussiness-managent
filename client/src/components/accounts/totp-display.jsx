@@ -1,9 +1,9 @@
 import { useTotp } from '@/hooks/use-totp';
 import { toast } from 'sonner';
 
-// Displays real-time TOTP code with countdown — click to copy
-export function TotpDisplay({ accountId, enabled = true, large = false }) {
-  const { code, secondsRemaining } = useTotp(accountId, enabled);
+// Displays real-time TOTP code computed client-side — zero server requests
+export function TotpDisplay({ secret, enabled = true, large = false }) {
+  const { code, secondsRemaining } = useTotp(secret, enabled);
 
   if (!code) return <span className="text-muted-foreground text-xs">N/A</span>;
 
@@ -17,7 +17,6 @@ export function TotpDisplay({ accountId, enabled = true, large = false }) {
 
   return (
     <div className="flex items-center gap-2 cursor-pointer group" onClick={copy} title="Click to copy">
-      {/* Circular countdown */}
       <svg className={large ? 'h-8 w-8' : 'h-5 w-5'} viewBox="0 0 36 36">
         <path
           className="stroke-muted"

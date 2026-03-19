@@ -72,7 +72,7 @@ export function AccountCard({ account, health = 'healthy', onSelect, onDelete })
         {/* TOTP section */}
         <div className="border-t bg-muted/20 px-4 py-2.5">
           <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">2FA Code</p>
-          <TotpDisplay accountId={account.id} />
+          <TotpDisplay secret={account.totp_secret} />
         </div>
 
         {/* Actions - matching reference */}

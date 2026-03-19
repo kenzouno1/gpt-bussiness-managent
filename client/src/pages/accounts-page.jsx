@@ -132,7 +132,7 @@ function AccountRow({ account, onView, onEdit, onDelete }) {
 
         {/* TOTP */}
         <div className="hidden w-36 lg:block">
-          <TotpDisplay accountId={account.id} />
+          <TotpDisplay secret={account.totp_secret} />
         </div>
 
         {/* Actions */}

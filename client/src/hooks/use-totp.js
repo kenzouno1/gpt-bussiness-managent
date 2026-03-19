@@ -1,25 +1,34 @@
 import { useState, useEffect } from 'react';
-import { api } from '@/lib/api';
+import { TOTP } from 'otpauth';
 
-// Polls TOTP code for an account every second
-export function useTotp(accountId, enabled = true) {
+// Compute TOTP entirely client-side — no server requests
+export function useTotp(secret, enabled = true) {
   const [data, setData] = useState({ code: null, secondsRemaining: 0 });
 
   useEffect(() => {
-    if (!accountId || !enabled) return;
+    if (!secret || !enabled) {
+      setData({ code: null, secondsRemaining: 0 });
+      return;
+    }
 
-    let active = true;
-    const fetchTotp = async () => {
-      try {
-        const result = await api.get(`/api/accounts/${accountId}/totp`);
-        if (active) setData(result);
-      } catch { /* ignore */ }
+    let totp;
+    try {
+      totp = new TOTP({ secret, algorithm: 'SHA1', digits: 6, period: 30 });
+    } catch {
+      setData({ code: null, secondsRemaining: 0 });
+      return;
+    }
+
+    const update = () => {
+      const code = totp.generate();
+      const secondsRemaining = totp.period - (Math.floor(Date.now() / 1000) % totp.period);
+      setData({ code, secondsRemaining });
     };
 
-    fetchTotp();
-    const interval = setInterval(fetchTotp, 1000);
-    return () => { active = false; clearInterval(interval); };
-  }, [accountId, enabled]);
+    update();
+    const interval = setInterval(update, 1000);
+    return () => clearInterval(interval);
+  }, [secret, enabled]);
 
   return data;
 }

@@ -55,7 +55,7 @@ export function AccountDetailSheet({ accountId, open, onOpenChange }) {
               <label className="text-muted-foreground mb-3 block text-[10px] font-semibold uppercase tracking-wider">
                 2FA Code (Live)
               </label>
-              <TotpDisplay accountId={accountId} enabled={open} large />
+              <TotpDisplay secret={account?.totp_secret} enabled={open} large />
             </div>
 
             <Separator className="my-5" />
