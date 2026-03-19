@@ -33,16 +33,19 @@ async function checkToken(token) {
   }
 }
 
-// Invite a user to a ChatGPT workspace/org: POST /accounts/{id}/invites
-async function inviteToOrg(sessionToken, email, role = 'reader') {
+// Invite users to a ChatGPT workspace: POST /accounts/{id}/invites
+// Accepts single email or array of emails
+async function inviteToOrg(sessionToken, emails, role = 'standard-user') {
   const wsId = await getWorkspaceId(sessionToken);
   if (!wsId) return { success: false, error: 'Cannot find workspace account' };
+
+  const emailList = Array.isArray(emails) ? emails : [emails];
 
   try {
     const res = await fetch(`${BASE_URL}/accounts/${wsId}/invites`, {
       method: 'POST',
       headers: authHeaders(sessionToken, wsId),
-      body: JSON.stringify({ email, role }),
+      body: JSON.stringify({ email_addresses: emailList, role }),
     });
     if (!res.ok) {
       const body = await res.text();
