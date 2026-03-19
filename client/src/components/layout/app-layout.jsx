@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Outlet, NavLink, useLocation } from 'react-router';
 import {
-  LayoutDashboard, Users, Bell,
+  LayoutDashboard, Users, UserCog, Bell,
   Sun, Moon, Menu, X, ChevronLeft, Globe
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -10,6 +10,7 @@ import { useTheme } from '@/hooks/use-theme';
 
 const navItems = [
   { to: '/', label: 'Bảng điều khiển', icon: LayoutDashboard },
+  { to: '/accounts', label: 'Tài khoản GPT', icon: UserCog },
   { to: '/teams', label: 'Đội nhóm', icon: Users },
 ];
 

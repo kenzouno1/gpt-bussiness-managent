@@ -7,7 +7,8 @@ const router = Router();
 // List all accounts
 router.get('/', (req, res) => {
   const accounts = db.prepare(`
-    SELECT id, email, status, chatgpt_plan_type, chatgpt_account_id, created_at, imported_at
+    SELECT id, email, password, status, chatgpt_plan_type, chatgpt_account_id,
+    totp_secret, session_token, created_at, imported_at
     FROM accounts ORDER BY id DESC
   `).all();
   res.json(accounts);
@@ -32,6 +33,53 @@ router.get('/:id/totp', (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// Create account manually
+router.post('/', (req, res) => {
+  const { email, password, totp_secret, status } = req.body;
+  if (!email) return res.status(400).json({ error: 'Email required' });
+
+  try {
+    const result = db.prepare(`
+      INSERT INTO accounts (email, password, totp_secret, status)
+      VALUES (?, ?, ?, ?)
+    `).run(email, password || null, totp_secret || null, status || null);
+    res.json({ success: true, id: result.lastInsertRowid });
+  } catch (err) {
+    if (err.message.includes('UNIQUE')) return res.status(409).json({ error: 'Email already exists' });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Bulk import from text (email|password|2fa per line)
+router.post('/bulk', (req, res) => {
+  const { text } = req.body;
+  if (!text) return res.status(400).json({ error: 'Text content required' });
+
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  const insert = db.prepare(`
+    INSERT OR IGNORE INTO accounts (email, password, totp_secret)
+    VALUES (?, ?, ?)
+  `);
+
+  let imported = 0, skipped = 0, errors = [];
+  const importAll = db.transaction(() => {
+    for (const line of lines) {
+      try {
+        const parts = line.split('|').map(p => p.trim());
+        const email = parts[0];
+        if (!email || !email.includes('@')) { skipped++; continue; }
+        const result = insert.run(email, parts[1] || null, parts[2] || null);
+        result.changes > 0 ? imported++ : skipped++;
+      } catch (err) {
+        errors.push(`${line}: ${err.message}`);
+      }
+    }
+  });
+
+  importAll();
+  res.json({ imported, skipped, errors, total: lines.length });
 });
 
 // Update account
