@@ -1,0 +1,28 @@
+body {
+  font-size: 0.9rem;
+  background: #f8f9fa;
+}
+
+.card {
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.totp-code {
+  font-family: 'Courier New', monospace;
+  font-size: 0.85rem;
+  letter-spacing: 2px;
+}
+
+.table th {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  color: #6c757d;
+}
+
+.table td {
+  vertical-align: middle;
+}
+
+.font-monospace {
+  font-size: 0.8rem;
+}
