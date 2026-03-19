@@ -35,10 +35,16 @@ router.get('/:id/totp', (req, res) => {
   }
 });
 
-// Get orphan accounts (not in any org)
-router.get('/stats/orphans', (req, res) => {
-  const rows = db.prepare('SELECT id FROM accounts WHERE id NOT IN (SELECT account_id FROM org_members)').all();
-  res.json({ orphan_count: rows.length, ids: rows.map(r => r.id) });
+// Get account status groups (orphan, invited, joined)
+router.get('/stats/groups', (req, res) => {
+  const orphans = db.prepare('SELECT id FROM accounts WHERE id NOT IN (SELECT account_id FROM org_members)').all();
+  const invited = db.prepare(`SELECT DISTINCT account_id as id FROM org_members WHERE invite_status IN ('sent', 'pending')`).all();
+  const joined = db.prepare(`SELECT DISTINCT account_id as id FROM org_members WHERE invite_status = 'joined'`).all();
+  res.json({
+    orphan: { count: orphans.length, ids: orphans.map(r => r.id) },
+    invited: { count: invited.length, ids: invited.map(r => r.id) },
+    joined: { count: joined.length, ids: joined.map(r => r.id) },
+  });
 });
 
 // Create account manually

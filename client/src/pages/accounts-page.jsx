@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Search, RefreshCw, Plus, Users, ShieldCheck, UserX, KeyRound, Eye, Trash2, Pencil } from 'lucide-react';
+import { Search, RefreshCw, Plus, Users, ShieldCheck, UserX, KeyRound, UserCheck, Send, Eye, Trash2, Pencil } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -14,9 +14,10 @@ import { toast } from 'sonner';
 
 const FILTERS = [
   { key: 'all', label: 'Tất cả', icon: Users, color: '#3b82f6' },
-  { key: 'has_2fa', label: 'Có 2FA', icon: ShieldCheck, color: '#22c55e' },
-  { key: 'has_token', label: 'Có Token', icon: KeyRound, color: '#a855f7' },
   { key: 'orphan', label: 'Chưa có nhóm', icon: UserX, color: '#f59e0b' },
+  { key: 'invited', label: 'Đang mời', icon: Send, color: '#a855f7' },
+  { key: 'joined', label: 'Đã tham gia', icon: UserCheck, color: '#22c55e' },
+  { key: 'has_2fa', label: 'Có 2FA', icon: ShieldCheck, color: '#10b981' },
   { key: 'no_2fa', label: 'Thiếu 2FA', icon: ShieldCheck, color: '#ef4444' },
 ];
 
@@ -29,51 +30,48 @@ export function AccountsPage() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
   const [editId, setEditId] = useState(null);
-  const [orphanIds, setOrphanIds] = useState(new Set());
+  const [groups, setGroups] = useState({ orphan: new Set(), invited: new Set(), joined: new Set() });
 
   const load = async () => {
     setLoading(true);
     try {
-      const [accs, orphans] = await Promise.all([
+      const [accs, grps] = await Promise.all([
         api.get('/api/accounts'),
-        api.get('/api/accounts/stats/orphans'),
+        api.get('/api/accounts/stats/groups'),
       ]);
       setAccounts(accs);
-      // Get orphan IDs for filtering
-      if (orphans.ids) {
-        setOrphanIds(new Set(orphans.ids));
-      } else {
-        // Fallback: accounts not in any org
-        const memberAccs = new Set(accs.filter(a => a.chatgpt_account_id).map(a => a.id));
-        setOrphanIds(new Set(accs.filter(a => !memberAccs.has(a.id)).map(a => a.id)));
-      }
+      setGroups({
+        orphan: new Set(grps.orphan?.ids || []),
+        invited: new Set(grps.invited?.ids || []),
+        joined: new Set(grps.joined?.ids || []),
+      });
     } catch (err) { toast.error(err.message); }
     finally { setLoading(false); }
   };
 
   useEffect(() => { load(); }, []);
 
-  // Filter counts
   const filterCounts = useMemo(() => ({
     all: accounts.length,
+    orphan: groups.orphan.size,
+    invited: groups.invited.size,
+    joined: groups.joined.size,
     has_2fa: accounts.filter(a => a.totp_secret).length,
-    has_token: accounts.filter(a => a.session_token).length,
-    orphan: orphanIds.size,
     no_2fa: accounts.filter(a => !a.totp_secret).length,
-  }), [accounts, orphanIds]);
+  }), [accounts, groups]);
 
-  // Filtered list
   const filtered = useMemo(() => {
     return accounts.filter(a => {
       const matchSearch = !search || a.email.toLowerCase().includes(search.toLowerCase());
       let matchFilter = true;
-      if (filter === 'has_2fa') matchFilter = !!a.totp_secret;
-      else if (filter === 'has_token') matchFilter = !!a.session_token;
-      else if (filter === 'orphan') matchFilter = orphanIds.has(a.id);
+      if (filter === 'orphan') matchFilter = groups.orphan.has(a.id);
+      else if (filter === 'invited') matchFilter = groups.invited.has(a.id);
+      else if (filter === 'joined') matchFilter = groups.joined.has(a.id);
+      else if (filter === 'has_2fa') matchFilter = !!a.totp_secret;
       else if (filter === 'no_2fa') matchFilter = !a.totp_secret;
       return matchSearch && matchFilter;
     });
-  }, [accounts, search, filter, orphanIds]);
+  }, [accounts, search, filter, groups]);
 
   const handleDelete = async (id) => {
     if (!confirm('Xóa tài khoản này?')) return;
@@ -148,7 +146,8 @@ export function AccountsPage() {
       ) : (
         <div className="space-y-2">
           {filtered.map(acc => (
-            <AccountRow key={acc.id} account={acc} isOrphan={orphanIds.has(acc.id)}
+            <AccountRow key={acc.id} account={acc}
+              status={groups.joined.has(acc.id) ? 'joined' : groups.invited.has(acc.id) ? 'invited' : 'orphan'}
               onView={() => { setSelectedId(acc.id); setSheetOpen(true); }}
               onEdit={() => { setEditId(acc.id); setFormOpen(true); }}
               onDelete={() => handleDelete(acc.id)} />
@@ -162,16 +161,24 @@ export function AccountsPage() {
   );
 }
 
-function AccountRow({ account, isOrphan, onView, onEdit, onDelete }) {
+const statusBadge = {
+  orphan: { label: 'Chưa có nhóm', class: 'bg-amber-500/15 text-amber-600 border-amber-500/30' },
+  invited: { label: 'Đang mời', class: 'bg-purple-500/15 text-purple-600 border-purple-500/30' },
+  joined: { label: 'Đã tham gia', class: 'bg-green-500/15 text-green-600 border-green-500/30' },
+};
+
+function AccountRow({ account, status = 'orphan', onView, onEdit, onDelete }) {
+  const badge = statusBadge[status];
   return (
     <Card className="transition-colors hover:bg-muted/30">
       <CardContent className="flex items-center gap-4 p-3">
         <div className="min-w-0 flex-1">
           <CopyField value={account.email} label="email" className="text-sm font-medium" />
           <div className="mt-0.5 flex gap-1">
+            <span className={`inline-flex items-center rounded-full border px-1.5 py-0 text-[9px] font-medium ${badge.class}`}>
+              {badge.label}
+            </span>
             {account.totp_secret && <Badge variant="secondary" className="h-4 text-[9px]">2FA</Badge>}
-            {account.session_token && <Badge variant="outline" className="h-4 text-[9px]">Token</Badge>}
-            {isOrphan && <Badge variant="destructive" className="h-4 text-[9px]">Chưa có nhóm</Badge>}
           </div>
         </div>
 
