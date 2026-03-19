@@ -5,6 +5,8 @@
   "main": "src/server.js",
   "scripts": {
     "dev": "nodemon src/server.js",
+    "dev:client": "cd client && npm run dev",
+    "build:client": "cd client && npm run build",
     "start": "node src/server.js"
   },
   "keywords": [],

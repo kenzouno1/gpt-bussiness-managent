@@ -21,6 +21,11 @@ app.use('/api/accounts', accountRoutes);
 app.use('/api/orgs', orgRoutes);
 app.use('/api/import', importRoutes);
 
+// SPA fallback — serve index.html for all non-API routes
+app.get('/{*path}', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
 app.listen(PORT, () => {
   console.log(`GPT Team Manager running on http://localhost:${PORT}`);
 });
