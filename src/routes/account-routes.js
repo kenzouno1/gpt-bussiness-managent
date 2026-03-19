@@ -35,6 +35,12 @@ router.get('/:id/totp', (req, res) => {
   }
 });
 
+// Get orphan count (accounts not in any org)
+router.get('/stats/orphans', (req, res) => {
+  const count = db.prepare('SELECT COUNT(*) as c FROM accounts WHERE id NOT IN (SELECT account_id FROM org_members)').get().c;
+  res.json({ orphan_count: count });
+});
+
 // Create account manually
 router.post('/', (req, res) => {
   const { email, password, totp_secret } = req.body;

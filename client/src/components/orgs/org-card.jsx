@@ -1,6 +1,14 @@
-import { Trash2, Send, Users, Eye, RefreshCw, Check } from 'lucide-react';
+import { Trash2, Send, Users, Eye, RefreshCw, Check, AlertCircle } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+
+const syncBadge = {
+  healthy: { label: 'Healthy', class: 'bg-green-500/15 text-green-500 border-green-500/30' },
+  invalid: { label: 'Invalid', class: 'bg-red-500/15 text-red-500 border-red-500/30' },
+  failed: { label: 'Failed', class: 'bg-red-500/15 text-red-400 border-red-400/30' },
+  no_credential: { label: 'No credential', class: 'bg-amber-500/15 text-amber-500 border-amber-500/30' },
+  pending: { label: 'Chưa đồng bộ', class: 'bg-muted text-muted-foreground border-border' },
+};
 
 export function OrgCard({ org, selectable, isSelected, onToggleSelect, onSelect, onInvite, onDelete }) {
   const handleClick = () => {
@@ -36,6 +44,11 @@ export function OrgCard({ org, selectable, isSelected, onToggleSelect, onSelect,
               {org.chatgpt_account_id}
             </p>
             <div className="mt-1.5 flex flex-wrap gap-1">
+              {org.sync_status && syncBadge[org.sync_status] && (
+                <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${syncBadge[org.sync_status].class}`}>
+                  {syncBadge[org.sync_status].label}
+                </span>
+              )}
               <Badge variant="outline" className="text-[10px] h-5">{org.plan_type || 'free'}</Badge>
             </div>
           </div>
@@ -51,6 +64,13 @@ export function OrgCard({ org, selectable, isSelected, onToggleSelect, onSelect,
           )}
           <span>{org.created_at ? new Date(org.created_at).toLocaleDateString('vi-VN') : '-'}</span>
         </div>
+
+        {/* Error message */}
+        {org.sync_error && (
+          <div className="mx-3 mb-2 rounded-lg bg-destructive/10 px-3 py-1.5 text-[11px] text-destructive">
+            {org.sync_error.substring(0, 80)}
+          </div>
+        )}
 
         {/* Actions */}
         {!selectable && (

@@ -44,32 +44,39 @@ router.get('/:id', (req, res) => {
   res.json({ ...org, members });
 });
 
-// Sync org members from ChatGPT API
+// Sync org members from ChatGPT API — saves status to DB
 router.post('/:id/sync', async (req, res) => {
   const org = db.prepare('SELECT * FROM organizations WHERE id = ?').get(req.params.id);
   if (!org) return res.status(404).json({ error: 'Org not found' });
 
   const token = getAdminToken(req.params.id);
-  if (!token) return res.status(400).json({ error: 'No session token' });
+  if (!token) {
+    db.prepare(`UPDATE organizations SET sync_status = 'no_credential', sync_error = 'No session token', last_synced = CURRENT_TIMESTAMP WHERE id = ?`).run(req.params.id);
+    return res.json({ success: false, sync_status: 'no_credential', error: 'No session token' });
+  }
 
-  // Fetch actual members from ChatGPT API
   const membersResult = await listOrgMembers(token);
   const invitesResult = await listInvites(token);
-
   const synced = { members: 0, invites: 0, errors: [] };
+
+  // If both fail → token invalid
+  if (!membersResult.success && !invitesResult.success) {
+    const errMsg = membersResult.error || invitesResult.error || 'Unknown error';
+    const status = errMsg.includes('403') || errMsg.includes('401') ? 'invalid' : 'failed';
+    db.prepare(`UPDATE organizations SET sync_status = ?, sync_error = ?, last_synced = CURRENT_TIMESTAMP WHERE id = ?`)
+      .run(status, errMsg, req.params.id);
+    return res.json({ success: false, sync_status: status, error: errMsg });
+  }
 
   if (membersResult.success) {
     const apiMembers = membersResult.data?.members || membersResult.data || [];
-    // Update existing org_members to 'joined' if they appear in API members list
     for (const m of apiMembers) {
       const email = m.email || m.user?.email;
       if (!email) continue;
       const account = db.prepare('SELECT id FROM accounts WHERE email = ?').get(email);
       if (account) {
-        db.prepare(`
-          INSERT OR REPLACE INTO org_members (org_id, account_id, role, invite_status)
-          VALUES (?, ?, ?, 'joined')
-        `).run(req.params.id, account.id, m.role || 'member');
+        db.prepare(`INSERT OR REPLACE INTO org_members (org_id, account_id, role, invite_status) VALUES (?, ?, ?, 'joined')`)
+          .run(req.params.id, account.id, m.role || 'member');
         synced.members++;
       }
     }
@@ -84,15 +91,11 @@ router.post('/:id/sync', async (req, res) => {
       if (!email) continue;
       const account = db.prepare('SELECT id FROM accounts WHERE email = ?').get(email);
       if (account) {
-        // Mark as invited (not yet joined)
-        const existing = db.prepare(
-          'SELECT invite_status FROM org_members WHERE org_id = ? AND account_id = ?'
-        ).get(req.params.id, account.id);
+        const existing = db.prepare('SELECT invite_status FROM org_members WHERE org_id = ? AND account_id = ?')
+          .get(req.params.id, account.id);
         if (!existing || existing.invite_status !== 'joined') {
-          db.prepare(`
-            INSERT OR REPLACE INTO org_members (org_id, account_id, role, invited_at, invite_status)
-            VALUES (?, ?, 'member', CURRENT_TIMESTAMP, 'sent')
-          `).run(req.params.id, account.id);
+          db.prepare(`INSERT OR REPLACE INTO org_members (org_id, account_id, role, invited_at, invite_status) VALUES (?, ?, 'member', CURRENT_TIMESTAMP, 'sent')`)
+            .run(req.params.id, account.id);
           synced.invites++;
         }
       }
@@ -101,7 +104,11 @@ router.post('/:id/sync', async (req, res) => {
     synced.errors.push(`Invites: ${invitesResult.error}`);
   }
 
-  res.json(synced);
+  // Mark as healthy
+  db.prepare(`UPDATE organizations SET sync_status = 'healthy', sync_error = NULL, last_synced = CURRENT_TIMESTAMP WHERE id = ?`)
+    .run(req.params.id);
+
+  res.json({ success: true, sync_status: 'healthy', ...synced });
 });
 
 // Auto-invite orphan accounts, max 4 per org
@@ -186,6 +193,42 @@ router.post('/:id/revoke', async (req, res) => {
   `).run(req.params.id);
 
   res.json({ revoked, failed, total: invites.length });
+});
+
+// Validate all org tokens (lightweight — just checks if token works)
+router.post('/validate-all', async (req, res) => {
+  const orgs = db.prepare('SELECT id FROM organizations').all();
+  let healthy = 0, invalid = 0, noToken = 0;
+
+  for (const org of orgs) {
+    const token = getAdminToken(org.id);
+    if (!token) {
+      db.prepare(`UPDATE organizations SET sync_status = 'no_credential', sync_error = 'No session token', last_synced = CURRENT_TIMESTAMP WHERE id = ?`).run(org.id);
+      noToken++;
+      continue;
+    }
+
+    try {
+      const r = await fetch('https://chatgpt.com/backend-api/me', {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      if (r.ok) {
+        db.prepare(`UPDATE organizations SET sync_status = 'healthy', sync_error = NULL, last_synced = CURRENT_TIMESTAMP WHERE id = ?`).run(org.id);
+        healthy++;
+      } else {
+        const status = r.status === 403 || r.status === 401 ? 'invalid' : 'failed';
+        db.prepare(`UPDATE organizations SET sync_status = ?, sync_error = ?, last_synced = CURRENT_TIMESTAMP WHERE id = ?`)
+          .run(status, `HTTP ${r.status}`, org.id);
+        invalid++;
+      }
+    } catch (err) {
+      db.prepare(`UPDATE organizations SET sync_status = 'failed', sync_error = ?, last_synced = CURRENT_TIMESTAMP WHERE id = ?`)
+        .run(err.message, org.id);
+      invalid++;
+    }
+  }
+
+  res.json({ healthy, invalid, noToken, total: orgs.length });
 });
 
 // Update org name

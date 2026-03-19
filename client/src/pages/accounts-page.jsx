@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Search, RefreshCw, Plus, Users, ShieldCheck, Eye, EyeOff, Copy, Trash2, Pencil } from 'lucide-react';
+import { Search, RefreshCw, Plus, Users, ShieldCheck, UserX, Eye, EyeOff, Copy, Trash2, Pencil } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -20,11 +20,18 @@ export function AccountsPage() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
   const [editId, setEditId] = useState(null);
+  const [orphanCount, setOrphanCount] = useState(0);
 
   const load = async () => {
     setLoading(true);
-    try { setAccounts(await api.get('/api/accounts')); }
-    catch (err) { toast.error(err.message); }
+    try {
+      const [accs, orphans] = await Promise.all([
+        api.get('/api/accounts'),
+        api.get('/api/accounts/stats/orphans'),
+      ]);
+      setAccounts(accs);
+      setOrphanCount(orphans.orphan_count);
+    } catch (err) { toast.error(err.message); }
     finally { setLoading(false); }
   };
 
@@ -33,7 +40,8 @@ export function AccountsPage() {
   const stats = useMemo(() => [
     { label: 'Tổng tài khoản', value: accounts.length, icon: Users, color: '#3b82f6' },
     { label: 'Có 2FA', value: accounts.filter(a => a.totp_secret).length, icon: ShieldCheck, color: '#22c55e' },
-  ], [accounts]);
+    { label: 'Chưa có nhóm', value: orphanCount, icon: UserX, color: '#f59e0b' },
+  ], [accounts, orphanCount]);
 
   const filtered = useMemo(() => {
     if (!search) return accounts;

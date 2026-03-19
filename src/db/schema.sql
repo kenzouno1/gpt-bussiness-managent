@@ -20,6 +20,9 @@ CREATE TABLE IF NOT EXISTS organizations (
   chatgpt_account_id TEXT UNIQUE NOT NULL,
   name TEXT NOT NULL,
   plan_type TEXT,
+  sync_status TEXT DEFAULT 'pending',
+  sync_error TEXT,
+  last_synced TEXT,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
