@@ -287,14 +287,44 @@ router.post('/validate-all', async (req, res) => {
     const result = await checkToken(token);
     if (result.success) {
       const allAccounts = result.data?.accounts || {};
+      const accountIds = Object.keys(allAccounts).filter(k => k !== 'default');
 
-      // Find team account matching this org's chatgpt_account_id
-      const accData = allAccounts[org.chatgpt_account_id]?.account;
-      const entitlement = allAccounts[org.chatgpt_account_id]?.entitlement;
+      console.log(`[validate] Org #${org.id} (${org.chatgpt_account_id})`);
+      console.log(`  Token accounts: ${accountIds.join(', ')}`);
+
+      // Log all accounts found in token
+      for (const [accId, accInfo] of Object.entries(allAccounts)) {
+        if (accId === 'default') continue;
+        const a = accInfo?.account;
+        const e = accInfo?.entitlement;
+        console.log(`  Account ${accId}: plan=${a?.plan_type}, structure=${a?.structure}, active_sub=${e?.has_active_subscription}, name=${a?.name}`);
+      }
+
+      // Find team/business account — match by chatgpt_account_id OR find first team account
+      let accData = allAccounts[org.chatgpt_account_id]?.account;
+      let entitlement = allAccounts[org.chatgpt_account_id]?.entitlement;
+      let matchedId = org.chatgpt_account_id;
+
+      // If no direct match, find any team/business account in the token
+      if (!accData) {
+        for (const [accId, accInfo] of Object.entries(allAccounts)) {
+          if (accId === 'default') continue;
+          const a = accInfo?.account;
+          if (a?.structure === 'workspace' || a?.plan_type === 'team') {
+            accData = a;
+            entitlement = accInfo?.entitlement;
+            matchedId = accId;
+            console.log(`  Matched by workspace: ${accId}`);
+            // Update org's chatgpt_account_id to the correct one
+            db.prepare('UPDATE organizations SET chatgpt_account_id = ? WHERE id = ?').run(accId, org.id);
+            break;
+          }
+        }
+      }
 
       if (!accData) {
-        // Token valid but no matching team account — org ID might be wrong
-        db.prepare(`UPDATE organizations SET sync_status = 'invalid', sync_error = 'Org not found in token accounts', last_synced = CURRENT_TIMESTAMP WHERE id = ?`)
+        console.log(`  FAIL: No team account found in token`);
+        db.prepare(`UPDATE organizations SET sync_status = 'invalid', sync_error = 'No team account in token. Found: ${accountIds.join(", ")}', last_synced = CURRENT_TIMESTAMP WHERE id = ?`)
           .run(org.id);
         invalid++;
         continue;
@@ -304,15 +334,17 @@ router.post('/validate-all', async (req, res) => {
       const orgName = accData.name;
       const hasActiveSub = entitlement?.has_active_subscription === true;
 
-      // Check if it's actually a team plan with active subscription
-      if (planType !== 'team' || !hasActiveSub) {
+      console.log(`  Result: plan=${planType}, active=${hasActiveSub}, name=${orgName}`);
+
+      // Accept team plans with active subscription
+      if (!hasActiveSub) {
         db.prepare(`UPDATE organizations SET sync_status = 'invalid', sync_error = ?, plan_type = ?, last_synced = CURRENT_TIMESTAMP WHERE id = ?`)
           .run(`Plan: ${planType}, Active: ${hasActiveSub}`, planType, org.id);
         invalid++;
         continue;
       }
 
-      // Healthy team account
+      // Healthy account with active subscription
       db.prepare(`
         UPDATE organizations SET
           sync_status = 'healthy', sync_error = NULL, last_synced = CURRENT_TIMESTAMP,
