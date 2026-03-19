@@ -14,8 +14,11 @@ const BROWSER_HEADERS = {
   'Referer': 'https://chatgpt.com/',
 };
 
-function authHeaders(token) {
-  return { ...BROWSER_HEADERS, 'Authorization': `Bearer ${token}` };
+function authHeaders(token, workspaceId) {
+  const h = { ...BROWSER_HEADERS, 'Authorization': `Bearer ${token}` };
+  // Must send workspace account ID for team operations
+  if (workspaceId) h['ChatGPT-Account-Id'] = workspaceId;
+  return h;
 }
 
 // Check if token is valid — returns full account info including plan/subscription
@@ -32,13 +35,13 @@ async function checkToken(token) {
 
 // Invite a user to a ChatGPT workspace/org: POST /accounts/{id}/invites
 async function inviteToOrg(sessionToken, email, role = 'reader') {
-  const accountId = extractAccountId(sessionToken);
-  if (!accountId) return { success: false, error: 'Cannot extract account ID' };
+  const wsId = await getWorkspaceId(sessionToken);
+  if (!wsId) return { success: false, error: 'Cannot find workspace account' };
 
   try {
-    const res = await fetch(`${BASE_URL}/accounts/${accountId}/invites`, {
+    const res = await fetch(`${BASE_URL}/accounts/${wsId}/invites`, {
       method: 'POST',
-      headers: authHeaders(sessionToken),
+      headers: authHeaders(sessionToken, wsId),
       body: JSON.stringify({ email, role }),
     });
     if (!res.ok) {
@@ -51,23 +54,40 @@ async function inviteToOrg(sessionToken, email, role = 'reader') {
   }
 }
 
-// Extract chatgpt_account_id from JWT token (team account, not personal)
+// Extract account info from JWT — returns both personal and can be used to find workspace
 function extractAccountId(token) {
   try {
     const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString());
     const auth = payload['https://api.openai.com/auth'] || {};
-    // Return team account ID if plan is team, otherwise the default account ID
     return auth.chatgpt_account_id;
   } catch { return null; }
 }
 
-// List workspace members: /accounts/{account_id}/users
+// Get workspace account ID by checking /accounts/check first
+// This is needed because the JWT contains the personal account ID by default
+async function getWorkspaceId(token) {
+  try {
+    const res = await fetch(`${BASE_URL}/accounts/check/v4-2023-04-27`, { headers: authHeaders(token) });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const allAccounts = data?.accounts || {};
+    for (const [accId, accInfo] of Object.entries(allAccounts)) {
+      if (accId === 'default') continue;
+      if (accInfo?.account?.structure === 'workspace' || accInfo?.account?.plan_type === 'team') {
+        return accId;
+      }
+    }
+    return null;
+  } catch { return null; }
+}
+
+// List workspace members: /accounts/{workspace_id}/users
 async function listOrgMembers(sessionToken) {
-  const accountId = extractAccountId(sessionToken);
-  if (!accountId) return { success: false, error: 'Cannot extract account ID from token' };
+  const wsId = await getWorkspaceId(sessionToken);
+  if (!wsId) return { success: false, error: 'Cannot find workspace account' };
 
   try {
-    const res = await fetch(`${BASE_URL}/accounts/${accountId}/users`, { headers: authHeaders(sessionToken) });
+    const res = await fetch(`${BASE_URL}/accounts/${wsId}/users`, { headers: authHeaders(sessionToken, wsId) });
     if (!res.ok) {
       const body = await res.text();
       return { success: false, error: `HTTP ${res.status}: ${body}` };
@@ -78,13 +98,13 @@ async function listOrgMembers(sessionToken) {
   }
 }
 
-// List pending invites: /accounts/{account_id}/invites
+// List pending invites: /accounts/{workspace_id}/invites
 async function listInvites(sessionToken) {
-  const accountId = extractAccountId(sessionToken);
-  if (!accountId) return { success: false, error: 'Cannot extract account ID from token' };
+  const wsId = await getWorkspaceId(sessionToken);
+  if (!wsId) return { success: false, error: 'Cannot find workspace account' };
 
   try {
-    const res = await fetch(`${BASE_URL}/accounts/${accountId}/invites`, { headers: authHeaders(sessionToken) });
+    const res = await fetch(`${BASE_URL}/accounts/${wsId}/invites`, { headers: authHeaders(sessionToken, wsId) });
     if (!res.ok) {
       const body = await res.text();
       return { success: false, error: `HTTP ${res.status}: ${body}` };
@@ -95,15 +115,15 @@ async function listInvites(sessionToken) {
   }
 }
 
-// Revoke a pending invite: DELETE /accounts/{account_id}/invites/{invite_id}
+// Revoke a pending invite: DELETE /accounts/{workspace_id}/invites/{invite_id}
 async function revokeInvite(sessionToken, inviteId) {
-  const accountId = extractAccountId(sessionToken);
-  if (!accountId) return { success: false, error: 'Cannot extract account ID' };
+  const wsId = await getWorkspaceId(sessionToken);
+  if (!wsId) return { success: false, error: 'Cannot find workspace account' };
 
   try {
-    const res = await fetch(`${BASE_URL}/accounts/${accountId}/invites/${inviteId}`, {
+    const res = await fetch(`${BASE_URL}/accounts/${wsId}/invites/${inviteId}`, {
       method: 'DELETE',
-      headers: authHeaders(sessionToken),
+      headers: authHeaders(sessionToken, wsId),
     });
     if (!res.ok) {
       const body = await res.text();
