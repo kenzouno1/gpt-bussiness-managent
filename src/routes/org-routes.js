@@ -236,11 +236,33 @@ router.post('/validate-all', async (req, res) => {
   res.json({ healthy, invalid, noToken, total: orgs.length });
 });
 
-// Update org name
+// Update org (name, owner token)
 router.put('/:id', (req, res) => {
-  const { name } = req.body;
-  const result = db.prepare('UPDATE organizations SET name = ? WHERE id = ?').run(name, req.params.id);
-  if (result.changes === 0) return res.status(404).json({ error: 'Org not found' });
+  const { name, session_token } = req.body;
+  const org = db.prepare('SELECT id FROM organizations WHERE id = ?').get(req.params.id);
+  if (!org) return res.status(404).json({ error: 'Org not found' });
+
+  if (name) {
+    db.prepare('UPDATE organizations SET name = ? WHERE id = ?').run(name, req.params.id);
+  }
+
+  // Update owner account's session token
+  if (session_token !== undefined) {
+    const owner = db.prepare(`
+      SELECT a.id FROM org_members om
+      JOIN accounts a ON a.id = om.account_id
+      WHERE om.org_id = ? AND om.role = 'owner' LIMIT 1
+    `).get(req.params.id);
+
+    if (owner) {
+      db.prepare('UPDATE accounts SET session_token = ? WHERE id = ?').run(session_token, owner.id);
+      // Reset sync status to re-validate
+      db.prepare(`UPDATE organizations SET sync_status = 'pending', sync_error = NULL WHERE id = ?`).run(req.params.id);
+    } else {
+      return res.status(400).json({ error: 'No owner account found' });
+    }
+  }
+
   res.json({ success: true });
 });
 

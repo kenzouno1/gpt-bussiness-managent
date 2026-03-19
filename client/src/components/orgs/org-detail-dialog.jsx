@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Send, Undo2, RefreshCw, Users, UserPlus } from 'lucide-react';
+import { Send, Undo2, RefreshCw, Users, UserPlus, KeyRound, Save } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
@@ -19,6 +20,8 @@ export function OrgDetailDialog({ orgId, open, onOpenChange, onInvite }) {
   const [org, setOrg] = useState(null);
   const [syncing, setSyncing] = useState(false);
   const [revoking, setRevoking] = useState(false);
+  const [tokenInput, setTokenInput] = useState('');
+  const [savingToken, setSavingToken] = useState(false);
 
   const loadOrg = () => {
     if (!orgId || !open) return;
@@ -36,6 +39,18 @@ export function OrgDetailDialog({ orgId, open, onOpenChange, onInvite }) {
       loadOrg();
     } catch (err) { toast.error(err.message); }
     finally { setSyncing(false); }
+  };
+
+  const handleSaveToken = async () => {
+    if (!tokenInput.trim()) { toast.warning('Nhập token'); return; }
+    setSavingToken(true);
+    try {
+      await api.put(`/api/orgs/${orgId}`, { session_token: tokenInput.trim() });
+      toast.success('Đã cập nhật token');
+      setTokenInput('');
+      loadOrg();
+    } catch (err) { toast.error(err.message); }
+    finally { setSavingToken(false); }
   };
 
   const handleRevoke = async () => {
@@ -67,6 +82,29 @@ export function OrgDetailDialog({ orgId, open, onOpenChange, onInvite }) {
             <Badge variant="outline">{org.plan_type || 'free'}</Badge>
           </div>
           <p className="text-muted-foreground text-xs">Created: {org.created_at}</p>
+        </div>
+
+        <Separator />
+
+        {/* Token edit */}
+        <div>
+          <div className="mb-2 flex items-center gap-2">
+            <KeyRound className="h-4 w-4 text-primary" />
+            <h4 className="text-sm font-medium">Session Token (Owner)</h4>
+          </div>
+          <div className="flex gap-2">
+            <Input
+              value={tokenInput}
+              onChange={(e) => setTokenInput(e.target.value)}
+              placeholder="Paste new session token (JWT)..."
+              className="font-mono text-xs"
+            />
+            <Button size="sm" onClick={handleSaveToken} disabled={savingToken} className="shrink-0 gap-1">
+              <Save className="h-3.5 w-3.5" />
+              {savingToken ? '...' : 'Lưu'}
+            </Button>
+          </div>
+          <p className="mt-1 text-[10px] text-muted-foreground">Cập nhật token sẽ reset trạng thái đồng bộ</p>
         </div>
 
         <Separator />
