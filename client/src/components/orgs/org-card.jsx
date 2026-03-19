@@ -1,6 +1,8 @@
-import { Trash2, Send, Users, Eye, RefreshCw, Check, AlertCircle } from 'lucide-react';
+import { Trash2, Send, Users, Eye, Check } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { CopyField } from '@/components/ui/copy-field';
+import { TotpDisplay } from '@/components/accounts/totp-display';
 
 const syncBadge = {
   healthy: { label: 'Healthy', class: 'bg-green-500/15 text-green-500 border-green-500/30' },
@@ -26,7 +28,6 @@ export function OrgCard({ org, selectable, isSelected, onToggleSelect, onSelect,
       <CardContent className="p-0">
         {/* Header */}
         <div className="flex items-start gap-3 p-4">
-          {/* Checkbox or number avatar */}
           {selectable ? (
             <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border-2 transition-colors ${
               isSelected ? 'border-primary bg-primary text-primary-foreground' : 'border-muted-foreground/30'
@@ -35,14 +36,11 @@ export function OrgCard({ org, selectable, isSelected, onToggleSelect, onSelect,
             </div>
           ) : (
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-sm font-bold text-primary">
-              {org.member_count}
+              {org.member_count || 0}
             </div>
           )}
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold">{org.name}</p>
-            <p className="mt-0.5 truncate font-mono text-[10px] text-muted-foreground">
-              {org.chatgpt_account_id}
-            </p>
             <div className="mt-1.5 flex flex-wrap gap-1">
               {org.sync_status && syncBadge[org.sync_status] && (
                 <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${syncBadge[org.sync_status].class}`}>
@@ -53,6 +51,26 @@ export function OrgCard({ org, selectable, isSelected, onToggleSelect, onSelect,
             </div>
           </div>
         </div>
+
+        {/* Owner account — copyable fields */}
+        {org.owner_email && (
+          <div className="space-y-1.5 border-t px-4 py-2.5 text-[11px]" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2">
+              <span className="w-10 shrink-0 font-medium text-muted-foreground">Email</span>
+              <CopyField value={org.owner_email} label="email" className="text-[11px]" />
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="w-10 shrink-0 font-medium text-muted-foreground">Pass</span>
+              <CopyField value={org.owner_password} label="password" className="text-[11px] font-mono" />
+            </div>
+            {org.owner_totp_secret && (
+              <div className="flex items-center gap-2">
+                <span className="w-10 shrink-0 font-medium text-muted-foreground">OTP</span>
+                <TotpDisplay secret={org.owner_totp_secret} />
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Meta */}
         <div className="flex items-center gap-4 border-t px-4 py-2 text-[11px] text-muted-foreground">
@@ -65,7 +83,7 @@ export function OrgCard({ org, selectable, isSelected, onToggleSelect, onSelect,
           <span>{org.created_at ? new Date(org.created_at).toLocaleDateString('vi-VN') : '-'}</span>
         </div>
 
-        {/* Error message */}
+        {/* Error */}
         {org.sync_error && (
           <div className="mx-3 mb-2 rounded-lg bg-destructive/10 px-3 py-1.5 text-[11px] text-destructive">
             {org.sync_error.substring(0, 80)}
