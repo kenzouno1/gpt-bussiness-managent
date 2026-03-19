@@ -47,21 +47,32 @@ router.post('/:id/invite', async (req, res) => {
     return res.status(400).json({ error: 'No account with session token found for this org' });
   }
 
-  // Only invite accounts that don't belong to ANY org (orphan accounts)
+  // Only invite orphan accounts, max 4 per org
+  const MAX_INVITE = 4;
   const { account_ids } = req.body;
-  let accountsToInvite;
 
+  // Count existing members (excluding owner)
+  const currentMembers = db.prepare(
+    `SELECT COUNT(*) as c FROM org_members WHERE org_id = ? AND role != 'owner'`
+  ).get(req.params.id).c;
+  const slotsLeft = Math.max(0, MAX_INVITE - currentMembers);
+
+  if (slotsLeft === 0) {
+    return res.json({ invited: 0, failed: 0, errors: [], message: 'Đã đạt tối đa 4 thành viên' });
+  }
+
+  let accountsToInvite;
   if (account_ids && account_ids.length > 0) {
     const placeholders = account_ids.map(() => '?').join(',');
     accountsToInvite = db.prepare(`
       SELECT id, email FROM accounts WHERE id IN (${placeholders})
-      AND id NOT IN (SELECT account_id FROM org_members)
-    `).all(...account_ids);
+      AND id NOT IN (SELECT account_id FROM org_members) LIMIT ?
+    `).all(...account_ids, slotsLeft);
   } else {
     accountsToInvite = db.prepare(`
       SELECT id, email FROM accounts
-      WHERE id NOT IN (SELECT account_id FROM org_members)
-    `).all();
+      WHERE id NOT IN (SELECT account_id FROM org_members) LIMIT ?
+    `).all(slotsLeft);
   }
 
   const results = { invited: 0, failed: 0, errors: [] };
