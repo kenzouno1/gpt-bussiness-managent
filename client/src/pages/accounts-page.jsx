@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Search, RefreshCw, Plus, Users, ShieldCheck, UserX, Eye, EyeOff, Copy, Trash2, Pencil } from 'lucide-react';
+import { Search, RefreshCw, Plus, Users, ShieldCheck, UserX, Eye, Trash2, Pencil } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -9,6 +9,7 @@ import { AccountDetailSheet } from '@/components/accounts/account-detail-sheet';
 import { AccountFormDialog } from '@/components/accounts/account-form-dialog';
 import { BulkImportDialog } from '@/components/accounts/bulk-import-dialog';
 import { TotpDisplay } from '@/components/accounts/totp-display';
+import { CopyField } from '@/components/ui/copy-field';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
 
@@ -114,31 +115,24 @@ export function AccountsPage() {
 
 // Inline row component for account list
 function AccountRow({ account, onView, onEdit, onDelete }) {
-  const [showPwd, setShowPwd] = useState(false);
-
   return (
     <Card className="transition-colors hover:bg-muted/30">
       <CardContent className="flex items-center gap-4 p-3">
-        {/* Email */}
+        {/* Email — click to copy */}
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium">{account.email}</p>
+          <CopyField value={account.email} label="email" className="text-sm font-medium" />
           <div className="mt-0.5 flex gap-1">
             {account.totp_secret && <Badge variant="secondary" className="h-4 text-[9px]">2FA</Badge>}
             {account.session_token && <Badge variant="outline" className="h-4 text-[9px]">Token</Badge>}
           </div>
         </div>
 
-        {/* Password */}
-        <div className="hidden w-32 items-center gap-1 sm:flex">
-          <span className="truncate font-mono text-xs text-muted-foreground">
-            {showPwd ? (account.password || '-') : '••••••••'}
-          </span>
-          <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => setShowPwd(!showPwd)}>
-            {showPwd ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
-          </Button>
+        {/* Password — click to copy */}
+        <div className="hidden w-32 sm:block">
+          <CopyField value={account.password} label="password" className="text-xs font-mono text-muted-foreground" />
         </div>
 
-        {/* TOTP */}
+        {/* TOTP — already click to copy */}
         <div className="hidden w-36 lg:block">
           <TotpDisplay secret={account.totp_secret} />
         </div>
