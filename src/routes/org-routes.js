@@ -31,17 +31,15 @@ router.get('/', (req, res) => {
   cleanExpiredInvites();
   const orgs = db.prepare(`
     SELECT o.*,
-      COUNT(CASE WHEN om.invite_status = 'joined' THEN 1 END) as member_count,
-      COUNT(CASE WHEN om.invite_status IN ('sent', 'pending') THEN 1 END) as invite_count,
-      COUNT(om.id) as total_count,
+      (SELECT COUNT(*) FROM org_members WHERE org_id = o.id AND invite_status = 'joined') as member_count,
+      (SELECT COUNT(*) FROM org_members WHERE org_id = o.id AND invite_status IN ('sent', 'pending')) as invite_count,
       owner_acc.email as owner_email,
       owner_acc.password as owner_password,
       owner_acc.totp_secret as owner_totp_secret
     FROM organizations o
-    LEFT JOIN org_members om ON om.org_id = o.id
     LEFT JOIN org_members owner_om ON owner_om.org_id = o.id AND owner_om.role = 'owner'
     LEFT JOIN accounts owner_acc ON owner_acc.id = owner_om.account_id
-    GROUP BY o.id ORDER BY o.id DESC
+    ORDER BY o.id DESC
   `).all();
   res.json(orgs);
 });
