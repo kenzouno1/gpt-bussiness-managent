@@ -54,11 +54,11 @@ function importCSV(csvContent) {
   // Prepared statements
   const insertAccount = db.prepare(`
     INSERT OR IGNORE INTO accounts
-    (email, password, status, payment_link_1, payment_link_2,
+    (email, password,
      hotmail_email, hotmail_id, hotmail_session, hotmail_uuid,
      totp_secret, session_token,
      chatgpt_account_id, chatgpt_user_id, chatgpt_plan_type, created_at)
-    VALUES (@email, @password, @status, @payment_link_1, @payment_link_2,
+    VALUES (@email, @password,
      @hotmail_email, @hotmail_id, @hotmail_session, @hotmail_uuid,
      @totp_secret, @session_token,
      @chatgpt_account_id, @chatgpt_user_id, @chatgpt_plan_type, @created_at)
@@ -74,7 +74,7 @@ function importCSV(csvContent) {
 
   const insertMember = db.prepare(`
     INSERT OR IGNORE INTO org_members (org_id, account_id, role, invite_status)
-    VALUES (@org_id, @account_id, 'member', 'pending')
+    VALUES (@org_id, @account_id, 'owner', 'joined')
   `);
 
   // Process in a transaction for performance
@@ -90,16 +90,12 @@ function importCSV(csvContent) {
         const accountData = {
           email,
           password: row['Password'] || null,
-          status: row['Status'] || null,
-          payment_link_1: row['Payment Link 1'] || null,
-          payment_link_2: row['Payment Link 2'] || null,
           ...hotmail,
           totp_secret: row['2FA'] || null,
           session_token: row['Session'] || null,
           ...jwtData,
           created_at: row['Created At'] || null,
         };
-        // Remove profile_email from accountData (not a column)
         delete accountData.profile_email;
 
         const result = insertAccount.run(accountData);

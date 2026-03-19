@@ -7,7 +7,7 @@ const router = Router();
 // List all accounts
 router.get('/', (req, res) => {
   const accounts = db.prepare(`
-    SELECT id, email, password, status, chatgpt_plan_type, chatgpt_account_id,
+    SELECT id, email, password, chatgpt_plan_type, chatgpt_account_id,
     totp_secret, session_token, created_at, imported_at
     FROM accounts ORDER BY id DESC
   `).all();
@@ -37,14 +37,14 @@ router.get('/:id/totp', (req, res) => {
 
 // Create account manually
 router.post('/', (req, res) => {
-  const { email, password, totp_secret, status } = req.body;
+  const { email, password, totp_secret } = req.body;
   if (!email) return res.status(400).json({ error: 'Email required' });
 
   try {
     const result = db.prepare(`
-      INSERT INTO accounts (email, password, totp_secret, status)
-      VALUES (?, ?, ?, ?)
-    `).run(email, password || null, totp_secret || null, status || null);
+      INSERT INTO accounts (email, password, totp_secret)
+      VALUES (?, ?, ?)
+    `).run(email, password || null, totp_secret || null);
     res.json({ success: true, id: result.lastInsertRowid });
   } catch (err) {
     if (err.message.includes('UNIQUE')) return res.status(409).json({ error: 'Email already exists' });
@@ -52,28 +52,43 @@ router.post('/', (req, res) => {
   }
 });
 
-// Bulk import from text (email|password|2fa per line)
+// Bulk import from text — auto-detect fields via regex
+// Supports any order: email, password, 2FA (TOTP base32), JWT token
 router.post('/bulk', (req, res) => {
   const { text } = req.body;
   if (!text) return res.status(400).json({ error: 'Text content required' });
 
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
   const insert = db.prepare(`
-    INSERT OR IGNORE INTO accounts (email, password, totp_secret)
-    VALUES (?, ?, ?)
+    INSERT OR IGNORE INTO accounts (email, password, totp_secret, session_token)
+    VALUES (?, ?, ?, ?)
   `);
+
+  // Regex patterns for smart field detection
+  const isEmail = (s) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
+  const isTotp = (s) => /^[A-Z2-7]{16,64}$/i.test(s);
+  const isJwt = (s) => /^eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(s);
 
   let imported = 0, skipped = 0, errors = [];
   const importAll = db.transaction(() => {
     for (const line of lines) {
       try {
-        const parts = line.split('|').map(p => p.trim());
-        const email = parts[0];
-        if (!email || !email.includes('@')) { skipped++; continue; }
-        const result = insert.run(email, parts[1] || null, parts[2] || null);
+        // Split by common delimiters: | , ; tab space
+        const parts = line.split(/[|,;\t]+/).map(p => p.trim()).filter(Boolean);
+        let email = null, password = null, totp = null, token = null;
+
+        for (const part of parts) {
+          if (!email && isEmail(part)) { email = part; }
+          else if (!token && isJwt(part)) { token = part; }
+          else if (!totp && isTotp(part)) { totp = part; }
+          else if (!password) { password = part; }
+        }
+
+        if (!email) { skipped++; continue; }
+        const result = insert.run(email, password, totp, token);
         result.changes > 0 ? imported++ : skipped++;
       } catch (err) {
-        errors.push(`${line}: ${err.message}`);
+        errors.push(`${line.substring(0, 50)}: ${err.message}`);
       }
     }
   });
@@ -84,14 +99,14 @@ router.post('/bulk', (req, res) => {
 
 // Update account
 router.put('/:id', (req, res) => {
-  const { email, password, status, totp_secret } = req.body;
+  const { email, password, totp_secret } = req.body;
   const existing = db.prepare('SELECT id FROM accounts WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Account not found' });
 
   db.prepare(`
     UPDATE accounts SET email = COALESCE(?, email), password = COALESCE(?, password),
-    status = COALESCE(?, status), totp_secret = COALESCE(?, totp_secret) WHERE id = ?
-  `).run(email, password, status, totp_secret, req.params.id);
+    totp_secret = COALESCE(?, totp_secret) WHERE id = ?
+  `).run(email, password, totp_secret, req.params.id);
 
   res.json({ success: true });
 });

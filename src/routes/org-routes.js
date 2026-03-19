@@ -47,7 +47,7 @@ router.post('/:id/invite', async (req, res) => {
     return res.status(400).json({ error: 'No account with session token found for this org' });
   }
 
-  // Get accounts to invite (from request body or all accounts not yet in this org)
+  // Only invite accounts that don't belong to ANY org (orphan accounts)
   const { account_ids } = req.body;
   let accountsToInvite;
 
@@ -55,13 +55,13 @@ router.post('/:id/invite', async (req, res) => {
     const placeholders = account_ids.map(() => '?').join(',');
     accountsToInvite = db.prepare(`
       SELECT id, email FROM accounts WHERE id IN (${placeholders})
-      AND id NOT IN (SELECT account_id FROM org_members WHERE org_id = ?)
-    `).all(...account_ids, req.params.id);
+      AND id NOT IN (SELECT account_id FROM org_members)
+    `).all(...account_ids);
   } else {
     accountsToInvite = db.prepare(`
       SELECT id, email FROM accounts
-      WHERE id NOT IN (SELECT account_id FROM org_members WHERE org_id = ?)
-    `).all(req.params.id);
+      WHERE id NOT IN (SELECT account_id FROM org_members)
+    `).all();
   }
 
   const results = { invited: 0, failed: 0, errors: [] };

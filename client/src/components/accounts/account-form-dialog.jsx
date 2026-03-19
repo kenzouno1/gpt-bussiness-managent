@@ -8,17 +8,17 @@ import { toast } from 'sonner';
 
 export function AccountFormDialog({ accountId, open, onOpenChange, onSaved }) {
   const isEdit = !!accountId;
-  const [form, setForm] = useState({ email: '', password: '', totp_secret: '', status: '' });
+  const [form, setForm] = useState({ email: '', password: '', totp_secret: '' });
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     if (isEdit) {
       api.get(`/api/accounts/${accountId}`).then(acc => {
-        setForm({ email: acc.email || '', password: acc.password || '', totp_secret: acc.totp_secret || '', status: acc.status || '' });
+        setForm({ email: acc.email || '', password: acc.password || '', totp_secret: acc.totp_secret || '' });
       });
     } else {
-      setForm({ email: '', password: '', totp_secret: '', status: '' });
+      setForm({ email: '', password: '', totp_secret: '' });
     }
   }, [accountId, open, isEdit]);
 
@@ -59,10 +59,6 @@ export function AccountFormDialog({ accountId, open, onOpenChange, onSaved }) {
           <div className="space-y-1.5">
             <Label>2FA Secret (TOTP Base32)</Label>
             <Input value={form.totp_secret} onChange={set('totp_secret')} placeholder="ABCDEF123456" className="font-mono" />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Status</Label>
-            <Input value={form.status} onChange={set('status')} placeholder="active, stripe_link..." />
           </div>
         </div>
         <DialogFooter>

@@ -115,8 +115,8 @@ function AccountRow({ account, onView, onEdit, onDelete }) {
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium">{account.email}</p>
           <div className="mt-0.5 flex gap-1">
-            <Badge variant="outline" className="h-4 text-[9px]">{account.status || 'unknown'}</Badge>
             {account.totp_secret && <Badge variant="secondary" className="h-4 text-[9px]">2FA</Badge>}
+            {account.session_token && <Badge variant="outline" className="h-4 text-[9px]">Token</Badge>}
           </div>
         </div>
 

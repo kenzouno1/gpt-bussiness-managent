@@ -64,10 +64,9 @@ export function AccountDetailSheet({ accountId, open, onOpenChange }) {
             <div className="grid grid-cols-2 gap-x-6 gap-y-5 px-6">
               <Field label="Email" value={account.email} />
               <Field label="Password" value={account.password} secret />
-              <Field label="Status" value={account.status} />
               <Field label="Plan" value={account.chatgpt_plan_type} />
-              <Field label="2FA Secret" value={account.totp_secret} mono secret />
               <Field label="Hotmail" value={account.hotmail_email} />
+              <Field label="2FA Secret" value={account.totp_secret} mono secret />
             </div>
 
             <Separator className="my-5" />
