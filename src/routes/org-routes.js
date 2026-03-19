@@ -260,7 +260,7 @@ router.post('/', (req, res) => {
 
 // Validate all org tokens (lightweight — just checks if token works)
 router.post('/validate-all', async (req, res) => {
-  const orgs = db.prepare('SELECT id FROM organizations').all();
+  const orgs = db.prepare('SELECT id, chatgpt_account_id FROM organizations').all();
   let healthy = 0, invalid = 0, noToken = 0;
 
   for (const org of orgs) {
@@ -273,7 +273,41 @@ router.post('/validate-all', async (req, res) => {
 
     const result = await checkToken(token);
     if (result.success) {
-      db.prepare(`UPDATE organizations SET sync_status = 'healthy', sync_error = NULL, last_synced = CURRENT_TIMESTAMP WHERE id = ?`).run(org.id);
+      const me = result.data;
+      // Extract real org info from /me response
+      const orgsData = me.orgs?.data || [];
+      const accounts = me.accounts || {};
+
+      // Find the team account matching this org's chatgpt_account_id
+      let planType = null, orgName = null;
+      for (const o of orgsData) {
+        if (!o.personal) { orgName = o.title || o.name; }
+      }
+      // Check accounts/check data if available
+      const accData = accounts[org.chatgpt_account_id]?.account;
+      if (accData) {
+        planType = accData.plan_type;
+        orgName = orgName || accData.name;
+      }
+
+      // Update org with real info from API
+      db.prepare(`
+        UPDATE organizations SET
+          sync_status = 'healthy', sync_error = NULL, last_synced = CURRENT_TIMESTAMP,
+          plan_type = COALESCE(?, plan_type),
+          name = COALESCE(?, name)
+        WHERE id = ?
+      `).run(planType, orgName, org.id);
+
+      // Update owner account email/name if different
+      if (me.email) {
+        db.prepare(`
+          UPDATE accounts SET chatgpt_user_id = COALESCE(?, chatgpt_user_id),
+          chatgpt_plan_type = COALESCE(?, chatgpt_plan_type)
+          WHERE email = ?
+        `).run(me.id, planType, me.email);
+      }
+
       healthy++;
     } else {
       const status = result.error?.includes('403') || result.error?.includes('401') ? 'invalid' : 'failed';
