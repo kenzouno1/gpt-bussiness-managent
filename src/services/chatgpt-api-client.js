@@ -55,4 +55,41 @@ async function listOrgMembers(sessionToken) {
   }
 }
 
-module.exports = { inviteToOrg, listOrgMembers };
+/**
+ * List pending invites for a workspace
+ */
+async function listInvites(sessionToken) {
+  try {
+    const res = await fetch(`${BASE_URL}/accounts/invites`, {
+      headers: { 'Authorization': `Bearer ${sessionToken}` },
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      return { success: false, error: `HTTP ${res.status}: ${body}` };
+    }
+    return { success: true, data: await res.json() };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Revoke/cancel a pending invite by invite ID
+ */
+async function revokeInvite(sessionToken, inviteId) {
+  try {
+    const res = await fetch(`${BASE_URL}/accounts/invites/${inviteId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${sessionToken}` },
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      return { success: false, error: `HTTP ${res.status}: ${body}` };
+    }
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
+module.exports = { inviteToOrg, listOrgMembers, listInvites, revokeInvite };

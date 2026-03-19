@@ -44,8 +44,11 @@ export function OrgCard({ org, selectable, isSelected, onToggleSelect, onSelect,
         {/* Meta */}
         <div className="flex items-center gap-4 border-t px-4 py-2 text-[11px] text-muted-foreground">
           <span className="flex items-center gap-1">
-            <Users className="h-3 w-3" /> {org.member_count} thành viên
+            <Users className="h-3 w-3" /> {org.member_count || 0} member
           </span>
+          {(org.invite_count > 0) && (
+            <span className="text-amber-500">{org.invite_count} invited</span>
+          )}
           <span>{org.created_at ? new Date(org.created_at).toLocaleDateString('vi-VN') : '-'}</span>
         </div>
 

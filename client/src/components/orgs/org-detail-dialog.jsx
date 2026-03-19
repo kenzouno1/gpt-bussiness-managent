@@ -1,27 +1,58 @@
 import { useState, useEffect } from 'react';
-import { Send } from 'lucide-react';
+import { Send, Undo2, RefreshCw, Users, UserPlus } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { api } from '@/lib/api';
+import { toast } from 'sonner';
 
-const statusVariant = {
-  pending: 'outline',
-  sent: 'default',
-  joined: 'secondary',
-  failed: 'destructive',
+const statusConfig = {
+  joined: { label: 'Member', variant: 'default', color: 'bg-green-500/15 text-green-600' },
+  sent: { label: 'Invited', variant: 'outline', color: 'bg-amber-500/15 text-amber-600' },
+  pending: { label: 'Pending', variant: 'outline', color: 'bg-amber-500/15 text-amber-600' },
+  failed: { label: 'Failed', variant: 'destructive', color: 'bg-red-500/15 text-red-500' },
+  owner: { label: 'Owner', variant: 'default', color: 'bg-primary/15 text-primary' },
 };
 
 export function OrgDetailDialog({ orgId, open, onOpenChange, onInvite }) {
   const [org, setOrg] = useState(null);
+  const [syncing, setSyncing] = useState(false);
+  const [revoking, setRevoking] = useState(false);
 
-  useEffect(() => {
+  const loadOrg = () => {
     if (!orgId || !open) return;
     api.get(`/api/orgs/${orgId}`).then(setOrg).catch(() => {});
-  }, [orgId, open]);
+  };
+
+  useEffect(() => { loadOrg(); }, [orgId, open]);
+
+  const handleSync = async () => {
+    setSyncing(true);
+    try {
+      const result = await api.post(`/api/orgs/${orgId}/sync`, {});
+      toast.success(`Đồng bộ: ${result.members} members, ${result.invites} invites`);
+      if (result.errors?.length) toast.warning(result.errors.join(', '));
+      loadOrg();
+    } catch (err) { toast.error(err.message); }
+    finally { setSyncing(false); }
+  };
+
+  const handleRevoke = async () => {
+    if (!confirm('Thu hồi tất cả lời mời đang chờ?')) return;
+    setRevoking(true);
+    try {
+      const result = await api.post(`/api/orgs/${orgId}/revoke`, {});
+      toast.success(`Thu hồi: ${result.revoked} lời mời`);
+      loadOrg();
+    } catch (err) { toast.error(err.message); }
+    finally { setRevoking(false); }
+  };
 
   if (!org) return null;
+
+  const joinedMembers = org.members?.filter(m => m.invite_status === 'joined') || [];
+  const invitedMembers = org.members?.filter(m => m.invite_status !== 'joined') || [];
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -40,30 +71,69 @@ export function OrgDetailDialog({ orgId, open, onOpenChange, onInvite }) {
 
         <Separator />
 
+        {/* Joined Members */}
         <div>
-          <h4 className="mb-2 text-sm font-medium">Members ({org.members?.length || 0})</h4>
-          {org.members?.length > 0 ? (
-            <div className="max-h-60 space-y-2 overflow-y-auto">
-              {org.members.map(m => (
-                <div key={m.id} className="flex items-center justify-between rounded-md border px-3 py-2">
+          <div className="mb-2 flex items-center gap-2">
+            <Users className="h-4 w-4 text-green-600" />
+            <h4 className="text-sm font-medium">Thành viên ({joinedMembers.length})</h4>
+          </div>
+          {joinedMembers.length > 0 ? (
+            <div className="max-h-40 space-y-1.5 overflow-y-auto">
+              {joinedMembers.map(m => (
+                <div key={m.id} className="flex items-center justify-between rounded-lg border px-3 py-2">
                   <span className="truncate text-sm">{m.email}</span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground">{m.role}</span>
-                    <Badge variant={statusVariant[m.invite_status] || 'outline'} className="text-xs">
-                      {m.invite_status || 'pending'}
-                    </Badge>
-                  </div>
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                    m.role === 'owner' ? statusConfig.owner.color : statusConfig.joined.color
+                  }`}>
+                    {m.role === 'owner' ? 'Owner' : 'Member'}
+                  </span>
                 </div>
               ))}
             </div>
           ) : (
-            <p className="text-muted-foreground text-sm">No members yet</p>
+            <p className="text-muted-foreground text-xs">Chưa có thành viên</p>
           )}
         </div>
 
-        <DialogFooter>
-          <Button className="gap-2" onClick={() => onInvite(org.id)}>
-            <Send className="h-4 w-4" /> Auto Invite All
+        {/* Invited (pending) */}
+        {invitedMembers.length > 0 && (
+          <>
+            <Separator />
+            <div>
+              <div className="mb-2 flex items-center gap-2">
+                <UserPlus className="h-4 w-4 text-amber-500" />
+                <h4 className="text-sm font-medium">Đã mời ({invitedMembers.length})</h4>
+              </div>
+              <div className="max-h-40 space-y-1.5 overflow-y-auto">
+                {invitedMembers.map(m => {
+                  const cfg = statusConfig[m.invite_status] || statusConfig.pending;
+                  return (
+                    <div key={m.id} className="flex items-center justify-between rounded-lg border border-dashed px-3 py-2">
+                      <span className="truncate text-sm">{m.email}</span>
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${cfg.color}`}>
+                        {cfg.label}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </>
+        )}
+
+        <DialogFooter className="flex-wrap gap-2">
+          <Button variant="outline" size="sm" className="gap-1.5" onClick={handleSync} disabled={syncing}>
+            <RefreshCw className={`h-3.5 w-3.5 ${syncing ? 'animate-spin' : ''}`} />
+            {syncing ? 'Đồng bộ...' : 'Đồng bộ'}
+          </Button>
+          {invitedMembers.length > 0 && (
+            <Button variant="outline" size="sm" className="gap-1.5 text-destructive" onClick={handleRevoke} disabled={revoking}>
+              <Undo2 className="h-3.5 w-3.5" />
+              {revoking ? 'Đang thu hồi...' : 'Thu hồi lời mời'}
+            </Button>
+          )}
+          <Button size="sm" className="gap-1.5" onClick={() => onInvite(org.id)}>
+            <Send className="h-3.5 w-3.5" /> Auto Invite
           </Button>
         </DialogFooter>
       </DialogContent>
