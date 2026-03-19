@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Outlet, NavLink, useLocation } from 'react-router';
 import {
-  LayoutDashboard, Users, Building2, Bell, KeyRound, FileText, Settings,
+  LayoutDashboard, Users, Bell,
   Sun, Moon, Menu, X, ChevronLeft, Globe
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -10,12 +10,7 @@ import { useTheme } from '@/hooks/use-theme';
 
 const navItems = [
   { to: '/', label: 'Bảng điều khiển', icon: LayoutDashboard },
-  { to: '/accounts', label: 'Đội nhóm', icon: Users },
-  { to: '/orgs', label: 'Tổ chức', icon: Building2 },
-  { to: '#', label: 'Thông báo', icon: Bell, disabled: true },
-  { to: '#', label: 'API', icon: KeyRound, disabled: true },
-  { to: '#', label: 'Tài liệu API', icon: FileText, disabled: true },
-  { to: '#', label: 'Cài đặt', icon: Settings, disabled: true },
+  { to: '/teams', label: 'Đội nhóm', icon: Users },
 ];
 
 export function AppLayout() {
@@ -43,13 +38,7 @@ export function AppLayout() {
 
         {/* Nav */}
         <nav className="flex-1 space-y-0.5 p-2">
-          {navItems.map(({ to, label, icon: Icon, disabled }) => (
-            disabled ? (
-              <div key={label} className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted-foreground/50 cursor-not-allowed">
-                <Icon className="h-4 w-4 shrink-0" />
-                {!collapsed && <span className="truncate">{label}</span>}
-              </div>
-            ) : (
+          {navItems.map(({ to, label, icon: Icon }) => (
               <NavLink key={to} to={to} end={to === '/'}>
                 {({ isActive }) => (
                   <div className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
@@ -62,7 +51,6 @@ export function AppLayout() {
                   </div>
                 )}
               </NavLink>
-            )
           ))}
         </nav>
 

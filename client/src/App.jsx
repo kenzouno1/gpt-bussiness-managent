@@ -1,8 +1,7 @@
 import { BrowserRouter, Routes, Route } from 'react-router';
 import { AppLayout } from '@/components/layout/app-layout';
 import { DashboardPage } from '@/pages/dashboard-page';
-import { AccountsPage } from '@/pages/accounts-page';
-import { OrgsPage } from '@/pages/orgs-page';
+import { TeamsPage } from '@/pages/teams-page';
 
 export default function App() {
   return (
@@ -10,8 +9,7 @@ export default function App() {
       <Routes>
         <Route element={<AppLayout />}>
           <Route path="/" element={<DashboardPage />} />
-          <Route path="/accounts" element={<AccountsPage />} />
-          <Route path="/orgs" element={<OrgsPage />} />
+          <Route path="/teams" element={<TeamsPage />} />
         </Route>
       </Routes>
     </BrowserRouter>

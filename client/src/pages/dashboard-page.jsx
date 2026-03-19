@@ -17,7 +17,7 @@ export function DashboardPage() {
   const totalMembers = orgs.reduce((s, o) => s + (o.member_count || 0), 0);
 
   const cards = [
-    { label: 'Tổng tài khoản', value: accounts.length, icon: Users, color: 'text-blue-500', bg: 'bg-blue-500/10', link: '/accounts' },
+    { label: 'Tổng tài khoản', value: accounts.length, icon: Users, color: 'text-blue-500', bg: 'bg-blue-500/10', link: '/teams' },
     { label: 'Tổ chức', value: orgs.length, icon: Building2, color: 'text-purple-500', bg: 'bg-purple-500/10', link: '/orgs' },
     { label: 'Có 2FA', value: accounts.filter(a => a.chatgpt_plan_type).length, icon: ShieldCheck, color: 'text-green-500', bg: 'bg-green-500/10' },
     { label: 'Tổng thành viên', value: totalMembers, icon: Users, color: 'text-amber-500', bg: 'bg-amber-500/10' },
@@ -59,7 +59,7 @@ export function DashboardPage() {
         <CardContent className="p-4">
           <h3 className="mb-3 text-sm font-semibold">Thao tác nhanh</h3>
           <div className="flex flex-wrap gap-2">
-            <Link to="/accounts">
+            <Link to="/teams">
               <Button size="sm" className="gap-2">
                 <Users className="h-3.5 w-3.5" /> Quản lý Đội nhóm
               </Button>
@@ -79,7 +79,7 @@ export function DashboardPage() {
           <CardContent className="p-4">
             <div className="mb-3 flex items-center justify-between">
               <h3 className="text-sm font-semibold">Tài khoản gần đây</h3>
-              <Link to="/accounts" className="text-xs text-primary hover:underline">Xem tất cả</Link>
+              <Link to="/teams" className="text-xs text-primary hover:underline">Xem tất cả</Link>
             </div>
             <div className="space-y-2">
               {accounts.slice(0, 5).map(acc => (

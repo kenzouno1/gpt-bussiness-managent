@@ -1,51 +1,73 @@
-import { Trash2, Send, Users } from 'lucide-react';
+import { Trash2, Send, Users, Eye, RefreshCw, Check } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 
-export function OrgCard({ org, onSelect, onInvite, onDelete }) {
+export function OrgCard({ org, selectable, isSelected, onToggleSelect, onSelect, onInvite, onDelete }) {
+  const handleClick = () => {
+    if (selectable) { onToggleSelect(); }
+    else { onSelect(org.id); }
+  };
+
   return (
     <Card
-      className="group cursor-pointer transition-all hover:shadow-md hover:border-primary/20"
-      onClick={() => onSelect(org.id)}
+      className={`group overflow-hidden transition-all hover:shadow-lg hover:border-primary/20 cursor-pointer ${
+        isSelected ? 'border-primary ring-1 ring-primary/30' : ''
+      }`}
+      onClick={handleClick}
     >
       <CardContent className="p-0">
         {/* Header */}
-        <div className="flex items-start justify-between border-b p-3">
+        <div className="flex items-start gap-3 p-4">
+          {/* Checkbox or number avatar */}
+          {selectable ? (
+            <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border-2 transition-colors ${
+              isSelected ? 'border-primary bg-primary text-primary-foreground' : 'border-muted-foreground/30'
+            }`}>
+              {isSelected && <Check className="h-5 w-5" />}
+            </div>
+          ) : (
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-sm font-bold text-primary">
+              {org.member_count}
+            </div>
+          )}
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium">{org.name}</p>
+            <p className="truncate text-sm font-semibold">{org.name}</p>
             <p className="mt-0.5 truncate font-mono text-[10px] text-muted-foreground">
               {org.chatgpt_account_id}
             </p>
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              <Badge variant="outline" className="text-[10px] h-5">{org.plan_type || 'free'}</Badge>
+            </div>
           </div>
-          <div className="flex gap-0.5 opacity-0 group-hover:opacity-100">
-            <Button variant="ghost" size="icon" className="h-7 w-7 text-green-600 hover:text-green-700"
-              onClick={(e) => { e.stopPropagation(); onInvite(org.id); }} title="Auto Invite">
-              <Send className="h-3.5 w-3.5" />
-            </Button>
-            <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive"
+        </div>
+
+        {/* Meta */}
+        <div className="flex items-center gap-4 border-t px-4 py-2 text-[11px] text-muted-foreground">
+          <span className="flex items-center gap-1">
+            <Users className="h-3 w-3" /> {org.member_count} thành viên
+          </span>
+          <span>{org.created_at ? new Date(org.created_at).toLocaleDateString('vi-VN') : '-'}</span>
+        </div>
+
+        {/* Actions */}
+        {!selectable && (
+          <div className="flex items-center border-t">
+            <button className="flex flex-1 items-center justify-center gap-1.5 py-2.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+              onClick={(e) => { e.stopPropagation(); onInvite(org.id); }}>
+              <Send className="h-3 w-3" /> Invite
+            </button>
+            <div className="h-5 w-px bg-border" />
+            <button className="flex flex-1 items-center justify-center gap-1.5 py-2.5 text-xs text-destructive hover:bg-destructive/10"
               onClick={(e) => { e.stopPropagation(); onDelete(org.id); }}>
-              <Trash2 className="h-3.5 w-3.5" />
-            </Button>
+              <Trash2 className="h-3 w-3" /> Delete
+            </button>
+            <div className="h-5 w-px bg-border" />
+            <button className="flex flex-1 items-center justify-center gap-1.5 py-2.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+              onClick={(e) => { e.stopPropagation(); onSelect(org.id); }}>
+              <Eye className="h-3 w-3" /> Chi tiết
+            </button>
           </div>
-        </div>
-
-        {/* Body */}
-        <div className="flex items-center justify-between px-3 py-3">
-          <div className="flex items-center gap-2">
-            <Badge variant="outline" className="text-[10px] h-5">{org.plan_type || 'free'}</Badge>
-          </div>
-          <div className="flex items-center gap-1.5 text-muted-foreground">
-            <Users className="h-3.5 w-3.5" />
-            <span className="text-sm font-semibold">{org.member_count}</span>
-            <span className="text-[10px]">members</span>
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="border-t px-3 py-2 text-[10px] text-muted-foreground">
-          Created: {org.created_at ? new Date(org.created_at).toLocaleDateString() : '-'}
-        </div>
+        )}
       </CardContent>
     </Card>
   );

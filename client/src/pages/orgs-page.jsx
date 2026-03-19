@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Search, RefreshCw, Building2, Users, Send, CheckCircle } from 'lucide-react';
+import { Search, RefreshCw, Building2, Users, Send, CheckCircle, CheckSquare, Square } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -15,13 +15,14 @@ export function OrgsPage() {
   const [selectedId, setSelectedId] = useState(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState(new Set());
+  const [bulkInviting, setBulkInviting] = useState(false);
 
   const loadOrgs = async () => {
     setLoading(true);
-    try {
-      const data = await api.get('/api/orgs');
-      setOrgs(data);
-    } catch (err) { toast.error(err.message); }
+    try { setOrgs(await api.get('/api/orgs')); }
+    catch (err) { toast.error(err.message); }
     finally { setLoading(false); }
   };
 
@@ -29,14 +30,13 @@ export function OrgsPage() {
 
   const stats = useMemo(() => {
     const totalMembers = orgs.reduce((s, o) => s + (o.member_count || 0), 0);
-    const planTypes = new Set(orgs.map(o => o.plan_type).filter(Boolean));
     return [
-      { label: 'Total Orgs', value: orgs.length, icon: Building2, color: '#a855f7' },
-      { label: 'Total Members', value: totalMembers, icon: Users, color: '#3b82f6' },
-      { label: 'Plan Types', value: planTypes.size, icon: CheckCircle, color: '#22c55e' },
-      { label: 'Avg Members', value: orgs.length ? Math.round(totalMembers / orgs.length) : 0, icon: Send, color: '#f59e0b' },
+      { label: 'Tổng Tổ chức', value: orgs.length, icon: Building2, color: '#a855f7' },
+      { label: 'Tổng thành viên', value: totalMembers, icon: Users, color: '#3b82f6' },
+      { label: 'Đã chọn', value: selected.size, icon: CheckCircle, color: '#22c55e' },
+      { label: 'Trung bình', value: orgs.length ? Math.round(totalMembers / orgs.length) : 0, icon: Send, color: '#f59e0b' },
     ];
-  }, [orgs]);
+  }, [orgs, selected]);
 
   const filtered = useMemo(() => {
     if (!search) return orgs;
@@ -46,9 +46,25 @@ export function OrgsPage() {
 
   const handleSelect = (id) => { setSelectedId(id); setDialogOpen(true); };
 
+  const toggleSelect = (id) => {
+    setSelected(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const selectAll = () => {
+    if (selected.size === filtered.length) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(filtered.map(o => o.id)));
+    }
+  };
+
   const handleInvite = async (id) => {
-    if (!confirm('Auto-invite all accounts to this org?')) return;
-    toast.info('Sending invites...');
+    if (!confirm('Auto-invite tất cả accounts vào org này?')) return;
+    toast.info('Đang gửi invites...');
     try {
       const result = await api.post(`/api/orgs/${id}/invite`, {});
       if (result.error) { toast.error(result.error); return; }
@@ -57,56 +73,115 @@ export function OrgsPage() {
     } catch (err) { toast.error(err.message); }
   };
 
+  const handleBulkInvite = async () => {
+    if (selected.size === 0) { toast.warning('Chưa chọn org nào'); return; }
+    if (!confirm(`Auto-invite tất cả accounts vào ${selected.size} org đã chọn?`)) return;
+
+    setBulkInviting(true);
+    let totalInvited = 0, totalFailed = 0, errors = [];
+
+    for (const orgId of selected) {
+      try {
+        const result = await api.post(`/api/orgs/${orgId}/invite`, {});
+        if (result.error) {
+          errors.push(`Org ${orgId}: ${result.error}`);
+          totalFailed++;
+        } else {
+          totalInvited += result.invited;
+          totalFailed += result.failed;
+          if (result.errors?.length) errors.push(...result.errors.map(e => `${e.email}: ${e.error}`));
+        }
+      } catch (err) {
+        errors.push(`Org ${orgId}: ${err.message}`);
+        totalFailed++;
+      }
+    }
+
+    setBulkInviting(false);
+
+    if (errors.length > 0) {
+      toast.warning(`Hoàn tất: ${totalInvited} invited, ${totalFailed} failed`);
+      console.warn('Bulk invite errors:', errors);
+    } else {
+      toast.success(`Hoàn tất: ${totalInvited} invited thành công`);
+    }
+
+    setSelected(new Set());
+    setSelectMode(false);
+    loadOrgs();
+  };
+
   const handleDelete = async (id) => {
-    if (!confirm('Delete this organization?')) return;
+    if (!confirm('Xóa tổ chức này?')) return;
     try {
       await api.del(`/api/orgs/${id}`);
-      toast.success('Organization deleted');
+      toast.success('Đã xóa tổ chức');
       loadOrgs();
     } catch (err) { toast.error(err.message); }
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Organizations</h1>
-          <p className="text-sm text-muted-foreground">Manage ChatGPT workspaces and invitations</p>
+          <h1 className="text-2xl font-bold tracking-tight">Tổ chức</h1>
+          <p className="text-sm text-muted-foreground">Quản lý ChatGPT workspaces và invitations</p>
         </div>
-        <Button variant="outline" size="sm" onClick={loadOrgs} disabled={loading}>
-          <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} /> Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          {selectMode && selected.size > 0 && (
+            <Button size="sm" className="gap-1.5" onClick={handleBulkInvite} disabled={bulkInviting}>
+              <Send className={`h-3.5 w-3.5 ${bulkInviting ? 'animate-pulse' : ''}`} />
+              {bulkInviting ? 'Đang invite...' : `Invite ${selected.size} org`}
+            </Button>
+          )}
+          <Button variant="outline" size="sm" onClick={() => { setSelectMode(!selectMode); setSelected(new Set()); }}
+            className={`gap-1.5 ${selectMode ? 'border-primary text-primary' : ''}`}>
+            <CheckSquare className="h-3.5 w-3.5" /> {selectMode ? 'Hủy chọn' : 'Chọn'}
+          </Button>
+          <Button variant="outline" size="sm" onClick={loadOrgs} disabled={loading} className="gap-1.5">
+            <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} /> Đồng bộ tất cả
+          </Button>
+        </div>
       </div>
 
       <StatsBar stats={stats} />
 
-      {/* Search */}
+      {/* Search + select all */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative w-full max-w-sm">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input placeholder="Search by name or org ID..." value={search} onChange={(e) => setSearch(e.target.value)}
+          <Input placeholder="Tìm kiếm tổ chức..." value={search} onChange={(e) => setSearch(e.target.value)}
             className="pl-9" />
         </div>
         <Badge variant="secondary" className="text-xs">{filtered.length} of {orgs.length}</Badge>
+        {selectMode && (
+          <Button variant="ghost" size="sm" onClick={selectAll} className="gap-1.5 text-xs">
+            {selected.size === filtered.length ? <CheckSquare className="h-3.5 w-3.5" /> : <Square className="h-3.5 w-3.5" />}
+            {selected.size === filtered.length ? 'Bỏ chọn tất cả' : 'Chọn tất cả'}
+          </Button>
+        )}
       </div>
 
       {/* Cards */}
       {loading ? (
-        <div className="flex items-center justify-center py-12">
+        <div className="flex items-center justify-center py-16">
           <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
       ) : filtered.length === 0 ? (
-        <div className="rounded-lg border border-dashed p-12 text-center">
-          <Building2 className="mx-auto h-10 w-10 text-muted-foreground/50" />
-          <p className="mt-3 text-sm text-muted-foreground">
-            {orgs.length === 0 ? 'No organizations yet. Import accounts to auto-create orgs.' : 'No matching organizations.'}
+        <div className="rounded-xl border border-dashed p-16 text-center">
+          <Building2 className="mx-auto h-12 w-12 text-muted-foreground/30" />
+          <p className="mt-4 text-sm text-muted-foreground">
+            {orgs.length === 0 ? 'Chưa có tổ chức nào. Import accounts để tự động tạo.' : 'Không tìm thấy kết quả.'}
           </p>
         </div>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {filtered.map(org => (
-            <OrgCard key={org.id} org={org} onSelect={handleSelect} onInvite={handleInvite} onDelete={handleDelete} />
+            <OrgCard key={org.id} org={org}
+              selectable={selectMode} isSelected={selected.has(org.id)}
+              onToggleSelect={() => toggleSelect(org.id)}
+              onSelect={handleSelect} onInvite={handleInvite} onDelete={handleDelete} />
           ))}
         </div>
       )}
