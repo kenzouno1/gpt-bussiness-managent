@@ -14,8 +14,21 @@ function getAdminToken(orgId) {
   return row?.session_token || null;
 }
 
+// Auto-expire invites older than 1 day — remove from DB so accounts become available again
+function cleanExpiredInvites() {
+  const expired = db.prepare(`
+    DELETE FROM org_members
+    WHERE invite_status IN ('sent', 'pending')
+    AND invited_at IS NOT NULL
+    AND datetime(invited_at) < datetime('now', '-1 day')
+  `).run();
+  return expired.changes;
+}
+
 // List all organizations with member/invite counts
 router.get('/', (req, res) => {
+  // Auto-clean expired invites on every list request
+  cleanExpiredInvites();
   const orgs = db.prepare(`
     SELECT o.*,
       COUNT(CASE WHEN om.invite_status = 'joined' THEN 1 END) as member_count,
