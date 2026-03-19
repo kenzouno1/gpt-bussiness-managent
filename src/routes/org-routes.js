@@ -286,40 +286,39 @@ router.post('/validate-all', async (req, res) => {
 
     const result = await checkToken(token);
     if (result.success) {
-      const me = result.data;
-      // Extract real org info from /me response
-      const orgsData = me.orgs?.data || [];
-      const accounts = me.accounts || {};
+      const allAccounts = result.data?.accounts || {};
 
-      // Find the team account matching this org's chatgpt_account_id
-      let planType = null, orgName = null;
-      for (const o of orgsData) {
-        if (!o.personal) { orgName = o.title || o.name; }
-      }
-      // Check accounts/check data if available
-      const accData = accounts[org.chatgpt_account_id]?.account;
-      if (accData) {
-        planType = accData.plan_type;
-        orgName = orgName || accData.name;
+      // Find team account matching this org's chatgpt_account_id
+      const accData = allAccounts[org.chatgpt_account_id]?.account;
+      const entitlement = allAccounts[org.chatgpt_account_id]?.entitlement;
+
+      if (!accData) {
+        // Token valid but no matching team account — org ID might be wrong
+        db.prepare(`UPDATE organizations SET sync_status = 'invalid', sync_error = 'Org not found in token accounts', last_synced = CURRENT_TIMESTAMP WHERE id = ?`)
+          .run(org.id);
+        invalid++;
+        continue;
       }
 
-      // Update org with real info from API
+      const planType = accData.plan_type;
+      const orgName = accData.name;
+      const hasActiveSub = entitlement?.has_active_subscription === true;
+
+      // Check if it's actually a team plan with active subscription
+      if (planType !== 'team' || !hasActiveSub) {
+        db.prepare(`UPDATE organizations SET sync_status = 'invalid', sync_error = ?, plan_type = ?, last_synced = CURRENT_TIMESTAMP WHERE id = ?`)
+          .run(`Plan: ${planType}, Active: ${hasActiveSub}`, planType, org.id);
+        invalid++;
+        continue;
+      }
+
+      // Healthy team account
       db.prepare(`
         UPDATE organizations SET
           sync_status = 'healthy', sync_error = NULL, last_synced = CURRENT_TIMESTAMP,
-          plan_type = COALESCE(?, plan_type),
-          name = COALESCE(?, name)
+          plan_type = ?, name = COALESCE(?, name)
         WHERE id = ?
       `).run(planType, orgName, org.id);
-
-      // Update owner account email/name if different
-      if (me.email) {
-        db.prepare(`
-          UPDATE accounts SET chatgpt_user_id = COALESCE(?, chatgpt_user_id),
-          chatgpt_plan_type = COALESCE(?, chatgpt_plan_type)
-          WHERE email = ?
-        `).run(me.id, planType, me.email);
-      }
 
       healthy++;
     } else {

@@ -18,10 +18,10 @@ function authHeaders(token) {
   return { ...BROWSER_HEADERS, 'Authorization': `Bearer ${token}` };
 }
 
-// Check if token is valid
+// Check if token is valid — returns full account info including plan/subscription
 async function checkToken(token) {
   try {
-    const res = await fetch(`${BASE_URL}/me`, { headers: authHeaders(token) });
+    const res = await fetch(`${BASE_URL}/accounts/check/v4-2023-04-27`, { headers: authHeaders(token) });
     if (!res.ok) return { success: false, error: `HTTP ${res.status}` };
     const data = await res.json();
     return { success: true, data };
