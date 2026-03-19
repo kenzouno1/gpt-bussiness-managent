@@ -34,7 +34,11 @@ export function OrgDetailDialog({ orgId, open, onOpenChange, onInvite }) {
     setSyncing(true);
     try {
       const result = await api.post(`/api/orgs/${orgId}/sync`, {});
-      toast.success(`Đồng bộ: ${result.members} members, ${result.invites} invites`);
+      if (result.success) {
+        toast.success(`Đồng bộ: ${result.members || 0} members, ${result.invites || 0} invites`);
+      } else {
+        toast.error(`Đồng bộ thất bại: ${result.error || 'Unknown error'}`);
+      }
       if (result.errors?.length) toast.warning(result.errors.join(', '));
       loadOrg();
     } catch (err) { toast.error(err.message); }
