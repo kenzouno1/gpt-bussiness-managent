@@ -200,6 +200,64 @@ router.post('/:id/revoke', async (req, res) => {
   res.json({ revoked, failed, total: invites.length });
 });
 
+// Create org manually from email|password|2fa format
+router.post('/', (req, res) => {
+  const { text } = req.body;
+  if (!text) return res.status(400).json({ error: 'Input required' });
+
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  let created = 0, skipped = 0, errors = [];
+
+  const isEmail = (s) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
+  const isTotp = (s) => /^[A-Z2-7]{16,64}$/i.test(s);
+  const isJwt = (s) => /^eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/.test(s);
+
+  const insertAcc = db.prepare('INSERT OR IGNORE INTO accounts (email, password, totp_secret, session_token) VALUES (?, ?, ?, ?)');
+  const findAcc = db.prepare('SELECT id FROM accounts WHERE email = ?');
+  const insertOrg = db.prepare('INSERT OR IGNORE INTO organizations (chatgpt_account_id, name, plan_type) VALUES (?, ?, ?)');
+  const findOrg = db.prepare('SELECT id FROM organizations WHERE chatgpt_account_id = ?');
+  const insertMember = db.prepare('INSERT OR IGNORE INTO org_members (org_id, account_id, role, invite_status) VALUES (?, ?, ?, ?)');
+
+  const importAll = db.transaction(() => {
+    for (const line of lines) {
+      try {
+        const parts = line.split(/[|,;\t]+/).map(p => p.trim()).filter(Boolean);
+        let email = null, password = null, totp = null, token = null;
+
+        for (const part of parts) {
+          if (!email && isEmail(part)) { email = part; }
+          else if (!token && isJwt(part)) { token = part; }
+          else if (!totp && isTotp(part)) { totp = part; }
+          else if (!password) { password = part; }
+        }
+
+        if (!email) { skipped++; continue; }
+
+        // Create/find account
+        insertAcc.run(email, password, totp, token);
+        const account = findAcc.get(email);
+        if (!account) { skipped++; continue; }
+
+        // Create org named after email prefix
+        const orgId = email.split('@')[0];
+        const orgName = `${email.split('@')[0]}`;
+        insertOrg.run(orgId, orgName, 'free');
+        const org = findOrg.get(orgId);
+        if (!org) { skipped++; continue; }
+
+        // Link as owner
+        insertMember.run(org.id, account.id, 'owner', 'joined');
+        created++;
+      } catch (err) {
+        errors.push(`${line.substring(0, 40)}: ${err.message}`);
+      }
+    }
+  });
+
+  importAll();
+  res.json({ created, skipped, errors, total: lines.length });
+});
+
 // Validate all org tokens (lightweight — just checks if token works)
 router.post('/validate-all', async (req, res) => {
   const orgs = db.prepare('SELECT id FROM organizations').all();
