@@ -300,26 +300,25 @@ router.post('/validate-all', async (req, res) => {
         console.log(`  Account ${accId}: plan=${a?.plan_type}, structure=${a?.structure}, active_sub=${e?.has_active_subscription}, name=${a?.name}`);
       }
 
-      // Find team/business account — match by chatgpt_account_id OR find first team account
-      let accData = allAccounts[org.chatgpt_account_id]?.account;
-      let entitlement = allAccounts[org.chatgpt_account_id]?.entitlement;
-      let matchedId = org.chatgpt_account_id;
+      // Find the team/workspace account (NOT personal/free)
+      let accData = null, entitlement = null, matchedId = null;
 
-      // If no direct match, find any team/business account in the token
-      if (!accData) {
-        for (const [accId, accInfo] of Object.entries(allAccounts)) {
-          if (accId === 'default') continue;
-          const a = accInfo?.account;
-          if (a?.structure === 'workspace' || a?.plan_type === 'team') {
-            accData = a;
-            entitlement = accInfo?.entitlement;
-            matchedId = accId;
-            console.log(`  Matched by workspace: ${accId}`);
-            // Update org's chatgpt_account_id to the correct one
-            db.prepare('UPDATE organizations SET chatgpt_account_id = ? WHERE id = ?').run(accId, org.id);
-            break;
-          }
+      // Always prefer the workspace/team account, not personal
+      for (const [accId, accInfo] of Object.entries(allAccounts)) {
+        if (accId === 'default') continue;
+        const a = accInfo?.account;
+        if (a?.structure === 'workspace' || a?.plan_type === 'team') {
+          accData = a;
+          entitlement = accInfo?.entitlement;
+          matchedId = accId;
+          break;
         }
+      }
+
+      // Update org's chatgpt_account_id to the correct team workspace ID
+      if (matchedId && matchedId !== org.chatgpt_account_id) {
+        console.log(`  Fix org ID: ${org.chatgpt_account_id} → ${matchedId}`);
+        db.prepare('UPDATE organizations SET chatgpt_account_id = ? WHERE id = ?').run(matchedId, org.id);
       }
 
       if (!accData) {
