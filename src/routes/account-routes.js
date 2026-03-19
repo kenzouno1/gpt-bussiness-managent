@@ -35,10 +35,10 @@ router.get('/:id/totp', (req, res) => {
   }
 });
 
-// Get orphan count (accounts not in any org)
+// Get orphan accounts (not in any org)
 router.get('/stats/orphans', (req, res) => {
-  const count = db.prepare('SELECT COUNT(*) as c FROM accounts WHERE id NOT IN (SELECT account_id FROM org_members)').get().c;
-  res.json({ orphan_count: count });
+  const rows = db.prepare('SELECT id FROM accounts WHERE id NOT IN (SELECT account_id FROM org_members)').all();
+  res.json({ orphan_count: rows.length, ids: rows.map(r => r.id) });
 });
 
 // Create account manually
