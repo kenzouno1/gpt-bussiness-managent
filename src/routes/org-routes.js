@@ -211,10 +211,8 @@ router.post('/', (req, res) => {
   const findAcc = db.prepare('SELECT id FROM accounts WHERE email = ?');
   const insertOrg = db.prepare('INSERT OR IGNORE INTO organizations (chatgpt_account_id, name, plan_type) VALUES (?, ?, ?)');
   const findOrg = db.prepare('SELECT id FROM organizations WHERE chatgpt_account_id = ?');
-  const upsertOwner = db.prepare(`
-    INSERT INTO org_members (org_id, account_id, role, invite_status) VALUES (?, ?, 'owner', 'joined')
-    ON CONFLICT(org_id, account_id) DO UPDATE SET role = 'owner', invite_status = 'joined'
-  `);
+  const insertOwner = db.prepare('INSERT OR IGNORE INTO org_members (org_id, account_id, role, invite_status) VALUES (?, ?, ?, ?)');
+  const orgHasOwner = db.prepare('SELECT 1 FROM org_members WHERE org_id = ? AND role = ? LIMIT 1');
 
   const newOrgIds = [];
   const importAll = db.transaction(() => {
@@ -247,8 +245,10 @@ router.post('/', (req, res) => {
         // Track newly created orgs for sync
         if (orgResult.changes > 0) newOrgIds.push(org.id);
 
-        // Import always upserts as owner
-        upsertOwner.run(org.id, account.id);
+        // Link as owner only if org has no owner yet
+        if (!orgHasOwner.get(org.id, 'owner')) {
+          insertOwner.run(org.id, account.id, 'owner', 'joined');
+        }
         created++;
       } catch (err) {
         errors.push(`${line.substring(0, 40)}: ${err.message}`);
