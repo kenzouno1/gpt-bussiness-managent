@@ -156,6 +156,12 @@ async function validateOrg(orgId) {
     const existing = db.prepare('SELECT id FROM organizations WHERE chatgpt_account_id = ? AND id != ?').get(matchedId, orgId);
     if (!existing) {
       db.prepare('UPDATE organizations SET chatgpt_account_id = ? WHERE id = ?').run(matchedId, orgId);
+    } else {
+      // Workspace already managed by another org — this org is invalid
+      const errMsg = `Workspace already managed by org #${existing.id}`;
+      db.prepare(`UPDATE organizations SET sync_status = 'invalid', sync_error = ?, last_synced = CURRENT_TIMESTAMP WHERE id = ?`)
+        .run(errMsg, orgId);
+      return { success: false, status: 'invalid', error: errMsg };
     }
   }
 
