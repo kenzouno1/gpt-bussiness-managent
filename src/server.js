@@ -41,4 +41,8 @@ app.get('/{*path}', (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`GPT Team Manager running on http://localhost:${PORT}`);
+
+  // Start background schedulers after server is ready
+  const { startAll } = require('./services/scheduler-manager');
+  startAll();
 });

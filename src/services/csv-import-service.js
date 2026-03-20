@@ -41,7 +41,7 @@ function decodeJWT(token) {
  * Returns { imported, skipped, orgsCreated, errors }
  */
 function importCSV(csvContent) {
-  const results = { imported: 0, skipped: 0, orgsCreated: 0, errors: [] };
+  const results = { imported: 0, skipped: 0, orgsCreated: 0, newOrgIds: [], errors: [] };
 
   // Remove BOM if present
   const clean = csvContent.replace(/^\uFEFF/, '');
@@ -115,6 +115,8 @@ function importCSV(csvContent) {
           });
           if (orgResult.changes > 0) {
             results.orgsCreated++;
+            const newOrg = findOrg.get(jwtData.chatgpt_account_id);
+            if (newOrg) results.newOrgIds.push(newOrg.id);
           }
 
           // Link account to org

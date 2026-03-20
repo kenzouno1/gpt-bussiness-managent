@@ -36,6 +36,10 @@ CREATE TABLE IF NOT EXISTS org_members (
   UNIQUE(org_id, account_id)
 );
 
+-- Account token status columns (added via ALTER for existing DBs)
+-- token_status: unchecked | valid | invalid | error
+-- token_checked_at: last check timestamp
+
 CREATE INDEX IF NOT EXISTS idx_accounts_chatgpt_account_id ON accounts(chatgpt_account_id);
 CREATE INDEX IF NOT EXISTS idx_org_members_org_id ON org_members(org_id);
 CREATE INDEX IF NOT EXISTS idx_org_members_account_id ON org_members(account_id);

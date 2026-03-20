@@ -1,7 +1,8 @@
 const { Router } = require('express');
 const db = require('../db/database');
-const { checkToken, inviteToOrg, listOrgMembers, listInvites, revokeInvite } = require('../services/chatgpt-api-client');
+const { inviteToOrg, listInvites, revokeInvite } = require('../services/chatgpt-api-client');
 const { requireAdmin } = require('../middleware/auth-middleware');
+const { enqueueOrgSync, enqueueAllOrgSync, getOrgSyncStatus } = require('../services/org-sync-worker');
 
 const router = Router();
 
@@ -25,6 +26,17 @@ function cleanExpiredInvites() {
   `).run();
   return expired.changes;
 }
+
+// Get sync queue status (must be before /:id to avoid param capture)
+router.get('/sync-status', (req, res) => {
+  res.json(getOrgSyncStatus());
+});
+
+// Enqueue all orgs for validation + sync
+router.post('/validate-all', (req, res) => {
+  const result = enqueueAllOrgSync();
+  res.json({ queued: true, ...result });
+});
 
 // List all organizations with member/invite counts
 router.get('/', (req, res) => {
@@ -61,76 +73,13 @@ router.get('/:id', (req, res) => {
   res.json({ ...org, members });
 });
 
-// Sync org members from ChatGPT API — saves status to DB
-router.post('/:id/sync', async (req, res) => {
-  const org = db.prepare('SELECT * FROM organizations WHERE id = ?').get(req.params.id);
+// Enqueue org sync job
+router.post('/:id/sync', (req, res) => {
+  const org = db.prepare('SELECT id FROM organizations WHERE id = ?').get(req.params.id);
   if (!org) return res.status(404).json({ error: 'Org not found' });
 
-  const admin = getAdminToken(req.params.id);
-  if (!admin) {
-    db.prepare(`UPDATE organizations SET sync_status = 'no_credential', sync_error = 'No session token', last_synced = CURRENT_TIMESTAMP WHERE id = ?`).run(req.params.id);
-    return res.json({ success: false, sync_status: 'no_credential', error: 'No session token' });
-  }
-  const token = admin.session_token;
-
-  const membersResult = await listOrgMembers(token);
-  const invitesResult = await listInvites(token);
-  const synced = { members: 0, invites: 0, errors: [] };
-
-  // If both fail → token invalid
-  if (!membersResult.success && !invitesResult.success) {
-    const errMsg = membersResult.error || invitesResult.error || 'Unknown error';
-    const status = errMsg.includes('403') || errMsg.includes('401') ? 'invalid' : 'failed';
-    db.prepare(`UPDATE organizations SET sync_status = ?, sync_error = ?, last_synced = CURRENT_TIMESTAMP WHERE id = ?`)
-      .run(status, errMsg, req.params.id);
-    return res.json({ success: false, sync_status: status, error: errMsg });
-  }
-
-  if (membersResult.success) {
-    const apiMembers = membersResult.data?.items || membersResult.data?.members || membersResult.data || [];
-    for (const m of apiMembers) {
-      const email = m.email || m.user?.email;
-      if (!email) continue;
-      const account = db.prepare('SELECT id FROM accounts WHERE email = ?').get(email);
-      if (account) {
-        // Mark the account that provides the session token as owner
-        const isOwner = account.id === admin.account_id;
-        const existing = db.prepare('SELECT role FROM org_members WHERE org_id = ? AND account_id = ?').get(req.params.id, account.id);
-        const role = isOwner || existing?.role === 'owner' ? 'owner' : (m.role || 'member');
-        db.prepare(`INSERT OR REPLACE INTO org_members (org_id, account_id, role, invite_status) VALUES (?, ?, ?, 'joined')`)
-          .run(req.params.id, account.id, role);
-        synced.members++;
-      }
-    }
-  } else {
-    synced.errors.push(`Members: ${membersResult.error}`);
-  }
-
-  if (invitesResult.success) {
-    const apiInvites = invitesResult.data?.items || invitesResult.data?.invites || invitesResult.data || [];
-    for (const inv of apiInvites) {
-      const email = inv.email;
-      if (!email) continue;
-      const account = db.prepare('SELECT id FROM accounts WHERE email = ?').get(email);
-      if (account) {
-        const existing = db.prepare('SELECT invite_status FROM org_members WHERE org_id = ? AND account_id = ?')
-          .get(req.params.id, account.id);
-        if (!existing || existing.invite_status !== 'joined') {
-          db.prepare(`INSERT OR REPLACE INTO org_members (org_id, account_id, role, invited_at, invite_status) VALUES (?, ?, 'member', CURRENT_TIMESTAMP, 'sent')`)
-            .run(req.params.id, account.id);
-          synced.invites++;
-        }
-      }
-    }
-  } else {
-    synced.errors.push(`Invites: ${invitesResult.error}`);
-  }
-
-  // Mark as healthy
-  db.prepare(`UPDATE organizations SET sync_status = 'healthy', sync_error = NULL, last_synced = CURRENT_TIMESTAMP WHERE id = ?`)
-    .run(req.params.id);
-
-  res.json({ success: true, sync_status: 'healthy', ...synced });
+  const queued = enqueueOrgSync(org.id);
+  res.json({ queued, message: queued ? 'Sync job queued' : 'Already in queue' });
 });
 
 // Auto-invite orphan accounts, max 4 per org
@@ -237,6 +186,7 @@ router.post('/', (req, res) => {
   const findOrg = db.prepare('SELECT id FROM organizations WHERE chatgpt_account_id = ?');
   const insertMember = db.prepare('INSERT OR IGNORE INTO org_members (org_id, account_id, role, invite_status) VALUES (?, ?, ?, ?)');
 
+  const newOrgIds = [];
   const importAll = db.transaction(() => {
     for (const line of lines) {
       try {
@@ -260,9 +210,12 @@ router.post('/', (req, res) => {
         // Create org named after email prefix
         const orgId = email.split('@')[0];
         const orgName = `${email.split('@')[0]}`;
-        insertOrg.run(orgId, orgName, 'free');
+        const orgResult = insertOrg.run(orgId, orgName, 'free');
         const org = findOrg.get(orgId);
         if (!org) { skipped++; continue; }
+
+        // Track newly created orgs for sync
+        if (orgResult.changes > 0) newOrgIds.push(org.id);
 
         // Link as owner
         insertMember.run(org.id, account.id, 'owner', 'joined');
@@ -274,105 +227,13 @@ router.post('/', (req, res) => {
   });
 
   importAll();
-  res.json({ created, skipped, errors, total: lines.length });
-});
 
-// Validate all org tokens (lightweight — just checks if token works)
-router.post('/validate-all', async (req, res) => {
-  const orgs = db.prepare('SELECT id, chatgpt_account_id FROM organizations').all();
-  let healthy = 0, invalid = 0, noToken = 0;
-
-  for (const org of orgs) {
-    const admin = getAdminToken(org.id);
-    if (!admin) {
-      db.prepare(`UPDATE organizations SET sync_status = 'no_credential', sync_error = 'No session token', last_synced = CURRENT_TIMESTAMP WHERE id = ?`).run(org.id);
-      noToken++;
-      continue;
-    }
-    const token = admin.session_token;
-
-    const result = await checkToken(token);
-    if (result.success) {
-      const allAccounts = result.data?.accounts || {};
-      const accountIds = Object.keys(allAccounts).filter(k => k !== 'default');
-
-      console.log(`[validate] Org #${org.id} (${org.chatgpt_account_id})`);
-      console.log(`  Token accounts: ${accountIds.join(', ')}`);
-
-      // Log all accounts found in token
-      for (const [accId, accInfo] of Object.entries(allAccounts)) {
-        if (accId === 'default') continue;
-        const a = accInfo?.account;
-        const e = accInfo?.entitlement;
-        console.log(`  Account ${accId}: plan=${a?.plan_type}, structure=${a?.structure}, active_sub=${e?.has_active_subscription}, name=${a?.name}`);
-      }
-
-      // Find the team/workspace account (NOT personal/free)
-      let accData = null, entitlement = null, matchedId = null;
-
-      // Always prefer the workspace/team account, not personal
-      for (const [accId, accInfo] of Object.entries(allAccounts)) {
-        if (accId === 'default') continue;
-        const a = accInfo?.account;
-        if (a?.structure === 'workspace' || a?.plan_type === 'team') {
-          accData = a;
-          entitlement = accInfo?.entitlement;
-          matchedId = accId;
-          break;
-        }
-      }
-
-      // Update org's chatgpt_account_id to the correct team workspace ID
-      if (matchedId && matchedId !== org.chatgpt_account_id) {
-        const existing = db.prepare('SELECT id FROM organizations WHERE chatgpt_account_id = ? AND id != ?').get(matchedId, org.id);
-        if (existing) {
-          console.log(`  SKIP org ID update: ${matchedId} already belongs to org #${existing.id}`);
-        } else {
-          console.log(`  Fix org ID: ${org.chatgpt_account_id} → ${matchedId}`);
-          db.prepare('UPDATE organizations SET chatgpt_account_id = ? WHERE id = ?').run(matchedId, org.id);
-        }
-      }
-
-      if (!accData) {
-        console.log(`  FAIL: No team account found in token`);
-        db.prepare(`UPDATE organizations SET sync_status = 'invalid', sync_error = 'No team account in token. Found: ${accountIds.join(", ")}', last_synced = CURRENT_TIMESTAMP WHERE id = ?`)
-          .run(org.id);
-        invalid++;
-        continue;
-      }
-
-      const planType = accData.plan_type;
-      const orgName = accData.name;
-      const hasActiveSub = entitlement?.has_active_subscription === true;
-
-      console.log(`  Result: plan=${planType}, active=${hasActiveSub}, name=${orgName}`);
-
-      // Accept team plans with active subscription
-      if (!hasActiveSub) {
-        db.prepare(`UPDATE organizations SET sync_status = 'invalid', sync_error = ?, plan_type = ?, last_synced = CURRENT_TIMESTAMP WHERE id = ?`)
-          .run(`Plan: ${planType}, Active: ${hasActiveSub}`, planType, org.id);
-        invalid++;
-        continue;
-      }
-
-      // Healthy account with active subscription
-      db.prepare(`
-        UPDATE organizations SET
-          sync_status = 'healthy', sync_error = NULL, last_synced = CURRENT_TIMESTAMP,
-          plan_type = ?, name = COALESCE(?, name)
-        WHERE id = ?
-      `).run(planType, orgName, org.id);
-
-      healthy++;
-    } else {
-      const status = result.error?.includes('403') || result.error?.includes('401') ? 'invalid' : 'failed';
-      db.prepare(`UPDATE organizations SET sync_status = ?, sync_error = ?, last_synced = CURRENT_TIMESTAMP WHERE id = ?`)
-        .run(status, result.error, org.id);
-      invalid++;
-    }
+  // Enqueue sync for newly created orgs
+  for (const id of newOrgIds) {
+    enqueueOrgSync(id);
   }
 
-  res.json({ healthy, invalid, noToken, total: orgs.length });
+  res.json({ created, skipped, errors, total: lines.length });
 });
 
 // Update org (name, owner token)
