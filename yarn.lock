@@ -680,7 +680,7 @@ node-abi@^3.3.0:
 
 node-cron@^4.2.1:
   version "4.2.1"
-  resolved "https://registry.yarnpkg.com/node-cron/-/node-cron-4.2.1.tgz#6979be4aee4702f06322d21220df8de252c8e265"
+  resolved "https://registry.npmjs.org/node-cron/-/node-cron-4.2.1.tgz"
   integrity sha512-lgimEHPE/QDgFlywTd8yTR61ptugX3Qer29efeyWw2rv259HtGBNn1vZVmp8lB9uo9wC0t/AT4iGqXxia+CJFg==
 
 nodemon@^3.1.14:
