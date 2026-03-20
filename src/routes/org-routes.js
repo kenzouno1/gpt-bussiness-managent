@@ -299,6 +299,24 @@ router.delete('/:id/members/:memberId', requireAdmin, (req, res) => {
   res.json({ success: true });
 });
 
+// Bulk delete orgs (admin only)
+router.post('/bulk-delete', requireAdmin, (req, res) => {
+  const { ids } = req.body;
+  if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: 'No IDs provided' });
+
+  const del = db.prepare('DELETE FROM organizations WHERE id = ?');
+  const deleteAll = db.transaction((orgIds) => {
+    let deleted = 0;
+    for (const id of orgIds) {
+      deleted += del.run(id).changes;
+    }
+    return deleted;
+  });
+
+  const deleted = deleteAll(ids);
+  res.json({ success: true, deleted });
+});
+
 // Delete org (admin only)
 router.delete('/:id', requireAdmin, (req, res) => {
   const result = db.prepare('DELETE FROM organizations WHERE id = ?').run(req.params.id);

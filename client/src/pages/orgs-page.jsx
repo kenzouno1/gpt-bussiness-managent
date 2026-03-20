@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Search, RefreshCw, Building2, Users, Send, CheckCircle, CheckSquare, Square, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, RefreshCw, Building2, Users, Send, CheckCircle, CheckSquare, Square, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -141,6 +141,18 @@ export function OrgsPage() {
     } catch (err) { toast.error(err.message); }
   };
 
+  const handleBulkDelete = async () => {
+    if (selected.size === 0) { toast.warning('Chưa chọn org nào'); return; }
+    if (!confirm(`Xóa ${selected.size} tổ chức đã chọn?`)) return;
+    try {
+      const result = await api.post('/api/orgs/bulk-delete', { ids: [...selected] });
+      toast.success(`Đã xóa ${result.deleted} tổ chức`);
+      setSelected(new Set());
+      setSelectMode(false);
+      loadOrgs();
+    } catch (err) { toast.error(err.message); }
+  };
+
   return (
     <div className="space-y-5">
       {/* Header */}
@@ -150,12 +162,15 @@ export function OrgsPage() {
           <p className="text-sm text-muted-foreground">Quản lý ChatGPT workspaces và invitations</p>
         </div>
         <div className="flex items-center gap-2">
-          {selectMode && selected.size > 0 && (
+          {selectMode && selected.size > 0 && (<>
+            <Button size="sm" variant="destructive" className="gap-1.5" onClick={handleBulkDelete}>
+              <Trash2 className="h-3.5 w-3.5" /> Xóa {selected.size} org
+            </Button>
             <Button size="sm" className="gap-1.5" onClick={handleBulkInvite} disabled={bulkInviting}>
               <Send className={`h-3.5 w-3.5 ${bulkInviting ? 'animate-pulse' : ''}`} />
               {bulkInviting ? 'Đang invite...' : `Invite ${selected.size} org`}
             </Button>
-          )}
+          </>)}
           <Button variant="outline" size="sm" onClick={() => { setSelectMode(!selectMode); setSelected(new Set()); }}
             className={`gap-1.5 ${selectMode ? 'border-primary text-primary' : ''}`}>
             <CheckSquare className="h-3.5 w-3.5" /> {selectMode ? 'Hủy chọn' : 'Chọn'}
