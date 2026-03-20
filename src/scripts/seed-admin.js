@@ -17,15 +17,17 @@ if (!password) {
   process.exit(1);
 }
 
-const existing = db.prepare('SELECT id FROM users WHERE username = ?').get(username);
-if (existing) {
-  console.log(`User "${username}" already exists (id=${existing.id}). Nothing to do.`);
-  process.exit(0);
-}
-
 const password_hash = bcrypt.hashSync(password, 10);
-const result = db.prepare(
-  'INSERT INTO users (username, email, password_hash, role) VALUES (?, ?, ?, ?)'
-).run(username, email, password_hash, 'admin');
+const existing = db.prepare('SELECT id FROM users WHERE username = ?').get(username);
 
-console.log(`Admin user created: username="${username}", id=${result.lastInsertRowid}`);
+if (existing) {
+  // Update password + ensure admin role for existing user
+  db.prepare('UPDATE users SET password_hash = ?, email = ?, role = ? WHERE id = ?')
+    .run(password_hash, email, 'admin', existing.id);
+  console.log(`Admin user updated: username="${username}", id=${existing.id}`);
+} else {
+  const result = db.prepare(
+    'INSERT INTO users (username, email, password_hash, role) VALUES (?, ?, ?, ?)'
+  ).run(username, email, password_hash, 'admin');
+  console.log(`Admin user created: username="${username}", id=${result.lastInsertRowid}`);
+}
