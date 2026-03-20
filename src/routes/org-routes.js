@@ -201,7 +201,13 @@ router.post('/', (req, res) => {
   const isTotp = (s) => /^[A-Z2-7]{16,64}$/i.test(s);
   const isJwt = (s) => /^eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/.test(s);
 
-  const insertAcc = db.prepare('INSERT OR IGNORE INTO accounts (email, password, totp_secret, session_token) VALUES (?, ?, ?, ?)');
+  const insertAcc = db.prepare(`
+    INSERT INTO accounts (email, password, totp_secret, session_token) VALUES (?, ?, ?, ?)
+    ON CONFLICT(email) DO UPDATE SET
+      password = COALESCE(excluded.password, password),
+      totp_secret = COALESCE(excluded.totp_secret, totp_secret),
+      session_token = COALESCE(excluded.session_token, session_token)
+  `);
   const findAcc = db.prepare('SELECT id FROM accounts WHERE email = ?');
   const insertOrg = db.prepare('INSERT OR IGNORE INTO organizations (chatgpt_account_id, name, plan_type) VALUES (?, ?, ?)');
   const findOrg = db.prepare('SELECT id FROM organizations WHERE chatgpt_account_id = ?');

@@ -51,9 +51,9 @@ function importCSV(csvContent) {
     results.errors.push(...parsed.errors.map(e => e.message));
   }
 
-  // Prepared statements
+  // Upsert: insert new accounts or update existing ones on re-import
   const insertAccount = db.prepare(`
-    INSERT OR IGNORE INTO accounts
+    INSERT INTO accounts
     (email, password,
      hotmail_email, hotmail_id, hotmail_session, hotmail_uuid,
      totp_secret, session_token,
@@ -62,6 +62,17 @@ function importCSV(csvContent) {
      @hotmail_email, @hotmail_id, @hotmail_session, @hotmail_uuid,
      @totp_secret, @session_token,
      @chatgpt_account_id, @chatgpt_user_id, @chatgpt_plan_type, @created_at)
+    ON CONFLICT(email) DO UPDATE SET
+     password = COALESCE(excluded.password, password),
+     hotmail_email = COALESCE(excluded.hotmail_email, hotmail_email),
+     hotmail_id = COALESCE(excluded.hotmail_id, hotmail_id),
+     hotmail_session = COALESCE(excluded.hotmail_session, hotmail_session),
+     hotmail_uuid = COALESCE(excluded.hotmail_uuid, hotmail_uuid),
+     totp_secret = COALESCE(excluded.totp_secret, totp_secret),
+     session_token = COALESCE(excluded.session_token, session_token),
+     chatgpt_account_id = COALESCE(excluded.chatgpt_account_id, chatgpt_account_id),
+     chatgpt_user_id = COALESCE(excluded.chatgpt_user_id, chatgpt_user_id),
+     chatgpt_plan_type = COALESCE(excluded.chatgpt_plan_type, chatgpt_plan_type)
   `);
 
   const insertOrg = db.prepare(`
@@ -105,11 +116,12 @@ function importCSV(csvContent) {
         };
         delete accountData.profile_email;
 
-        const result = insertAccount.run(accountData);
-        if (result.changes > 0) {
-          results.imported++;
+        const existing = findAccount.get(email);
+        insertAccount.run(accountData);
+        if (existing) {
+          results.skipped++; // updated existing
         } else {
-          results.skipped++;
+          results.imported++; // new account
         }
 
         // Auto-create org if chatgpt_account_id exists
