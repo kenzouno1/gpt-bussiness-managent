@@ -173,9 +173,16 @@ export function OrgDetailDialog({ orgId, open, onOpenChange, onInvite, onDataCha
                   return (
                     <div key={m.id} className="flex items-center justify-between rounded-lg border border-dashed px-3 py-2">
                       <span className="truncate text-sm">{m.email}</span>
-                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${cfg.color}`}>
-                        {cfg.label}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${cfg.color}`}>
+                          {cfg.label}
+                        </span>
+                        <button onClick={() => handleRemoveMember(m.id, m.email)}
+                          className="rounded p-0.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                          title="Thu hồi lời mời">
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                     </div>
                   );
                 })}
