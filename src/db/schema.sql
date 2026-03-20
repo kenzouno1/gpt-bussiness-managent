@@ -28,8 +28,8 @@ CREATE TABLE IF NOT EXISTS organizations (
 
 CREATE TABLE IF NOT EXISTS org_members (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  org_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-  account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  org_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
+  account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE RESTRICT,
   role TEXT DEFAULT 'member',
   invited_at TEXT,
   invite_status TEXT DEFAULT 'pending',
