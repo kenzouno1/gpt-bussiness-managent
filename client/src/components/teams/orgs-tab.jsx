@@ -43,9 +43,10 @@ export function OrgsTab() {
     setValidating(true);
     try {
       const r = await api.post('/api/orgs/validate-all', {});
-      toast.info(`Token check: ${r.healthy} healthy, ${r.invalid} invalid, ${r.noToken} no token`);
+      toast.info(`Đã gửi kiểm tra ${r.queued || 0}/${r.total || 0} orgs`);
       lastValidated.current = Date.now();
-      await loadOrgs();
+      // Reload after delay to reflect validation results
+      setTimeout(loadOrgs, 5000);
     } catch (err) { toast.error(err.message); }
     finally { setValidating(false); }
   };
