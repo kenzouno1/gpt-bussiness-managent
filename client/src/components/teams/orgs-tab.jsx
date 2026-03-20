@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { Search, RefreshCw, Building2, Users, Send, CheckCircle, CheckSquare, Square, ShieldCheck, AlertTriangle, Upload } from 'lucide-react';
+import { Search, RefreshCw, Building2, Users, Send, CheckCircle, CheckSquare, Square, ShieldCheck, AlertTriangle, Upload, Trash2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -125,16 +125,29 @@ export function OrgsTab() {
     catch (err) { toast.error(err.message); }
   };
 
+  const handleBulkDelete = async () => {
+    if (selected.size === 0) { toast.warning('Chưa chọn org nào'); return; }
+    if (!confirm(`Xóa ${selected.size} tổ chức đã chọn?`)) return;
+    try {
+      const r = await api.post('/api/orgs/bulk-delete', { ids: [...selected] });
+      toast.success(`Đã xóa ${r.deleted} tổ chức`);
+      setSelected(new Set()); setSelectMode(false); loadOrgs();
+    } catch (err) { toast.error(err.message); }
+  };
+
   return (
     <div className="space-y-5">
       {/* Actions */}
       <div className="flex flex-wrap items-center gap-2">
-        {selectMode && selected.size > 0 && (
+        {selectMode && selected.size > 0 && (<>
+          <Button size="sm" variant="destructive" className="gap-1.5" onClick={handleBulkDelete}>
+            <Trash2 className="h-3.5 w-3.5" /> Xóa {selected.size} org
+          </Button>
           <Button size="sm" className="gap-1.5" onClick={handleBulkInvite} disabled={bulkInviting}>
             <Send className={`h-3.5 w-3.5 ${bulkInviting ? 'animate-pulse' : ''}`} />
             {bulkInviting ? 'Đang invite...' : `Invite ${selected.size} org`}
           </Button>
-        )}
+        </>)}
         <Button variant="outline" size="sm" className={`gap-1.5 ${selectMode ? 'border-primary text-primary' : ''}`}
           onClick={() => { setSelectMode(!selectMode); setSelected(new Set()); }}>
           <CheckSquare className="h-3.5 w-3.5" /> {selectMode ? 'Hủy chọn' : 'Chọn'}
