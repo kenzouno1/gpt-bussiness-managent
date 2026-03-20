@@ -34,13 +34,13 @@ export function OrgDetailDialog({ orgId, open, onOpenChange, onInvite }) {
     setSyncing(true);
     try {
       const result = await api.post(`/api/orgs/${orgId}/sync`, {});
-      if (result.success) {
-        toast.success(`Đồng bộ: ${result.members || 0} members, ${result.invites || 0} invites`);
+      if (result.error) {
+        toast.error(`Đồng bộ thất bại: ${result.error}`);
       } else {
-        toast.error(`Đồng bộ thất bại: ${result.error || 'Unknown error'}`);
+        toast.success(result.message || 'Đã gửi yêu cầu đồng bộ');
       }
-      if (result.errors?.length) toast.warning(result.errors.join(', '));
-      loadOrg();
+      // Reload org after short delay to reflect sync results
+      setTimeout(loadOrg, 3000);
     } catch (err) { toast.error(err.message); }
     finally { setSyncing(false); }
   };
