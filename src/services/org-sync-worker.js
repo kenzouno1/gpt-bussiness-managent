@@ -96,22 +96,23 @@ async function syncOrg(orgId) {
     synced.errors.push(`Members: ${membersResult.error}`);
   }
 
-  // Remove stale members not present in API response, but NEVER remove the owner
-  if (membersResult.success) {
+  // Remove stale entries not present in API response, but NEVER remove the owner
+  // Run when both APIs succeeded — so we have full picture of members + invites
+  if (membersResult.success && invitesResult.success) {
     const dbMembers = db.prepare(
-      `SELECT om.id, om.account_id, a.email FROM org_members om
+      `SELECT om.id, om.account_id, om.invite_status, a.email FROM org_members om
        JOIN accounts a ON a.id = om.account_id WHERE om.org_id = ?`
     ).all(orgId);
     let removed = 0;
     for (const row of dbMembers) {
-      // Keep owner always; keep if account_id or email found in API response
       if (row.account_id === ownerAccountId) continue;
       if (apiAccountIds.has(row.account_id)) continue;
       if (apiEmails.has(row.email.toLowerCase())) continue;
+      // Not in API members nor invites — stale, remove
       db.prepare('DELETE FROM org_members WHERE id = ?').run(row.id);
       removed++;
     }
-    if (removed > 0) console.log(`[org-sync] Org ${orgId}: removed ${removed} stale members`);
+    if (removed > 0) console.log(`[org-sync] Org ${orgId}: removed ${removed} stale entries`);
     synced.removed = removed;
   }
 
