@@ -2,7 +2,7 @@ const { Router } = require('express');
 const db = require('../db/database');
 const { inviteToOrg, listInvites, revokeInvite } = require('../services/chatgpt-api-client');
 const { requireAdmin } = require('../middleware/auth-middleware');
-const { enqueueOrgSync, enqueueAllOrgSync, getOrgSyncStatus } = require('../services/org-sync-worker');
+const { syncOrg, validateOrg, enqueueOrgSync, enqueueAllOrgSync, getOrgSyncStatus } = require('../services/org-sync-worker');
 
 const router = Router();
 
@@ -73,13 +73,19 @@ router.get('/:id', (req, res) => {
   res.json({ ...org, members });
 });
 
-// Enqueue org sync job
-router.post('/:id/sync', (req, res) => {
+// Force sync single org immediately (user-triggered)
+router.post('/:id/sync', async (req, res) => {
   const org = db.prepare('SELECT id FROM organizations WHERE id = ?').get(req.params.id);
   if (!org) return res.status(404).json({ error: 'Org not found' });
 
-  const queued = enqueueOrgSync(org.id);
-  res.json({ queued, message: queued ? 'Sync job queued' : 'Already in queue' });
+  try {
+    const validateResult = await validateOrg(org.id);
+    if (!validateResult.success) return res.json(validateResult);
+    const syncResult = await syncOrg(org.id);
+    res.json(syncResult);
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 // Auto-invite orphan accounts, max 4 per org
@@ -200,6 +206,7 @@ router.post('/', (req, res) => {
   const insertOrg = db.prepare('INSERT OR IGNORE INTO organizations (chatgpt_account_id, name, plan_type) VALUES (?, ?, ?)');
   const findOrg = db.prepare('SELECT id FROM organizations WHERE chatgpt_account_id = ?');
   const insertMember = db.prepare('INSERT OR IGNORE INTO org_members (org_id, account_id, role, invite_status) VALUES (?, ?, ?, ?)');
+  const orgHasOwner = db.prepare('SELECT 1 FROM org_members WHERE org_id = ? AND role = ? LIMIT 1');
 
   const newOrgIds = [];
   const importAll = db.transaction(() => {
@@ -232,8 +239,9 @@ router.post('/', (req, res) => {
         // Track newly created orgs for sync
         if (orgResult.changes > 0) newOrgIds.push(org.id);
 
-        // Link as owner
-        insertMember.run(org.id, account.id, 'owner', 'joined');
+        // Link as owner only if org has no owner yet, otherwise as member
+        const role = orgHasOwner.get(org.id, 'owner') ? 'member' : 'owner';
+        insertMember.run(org.id, account.id, role, 'joined');
         created++;
       } catch (err) {
         errors.push(`${line.substring(0, 40)}: ${err.message}`);

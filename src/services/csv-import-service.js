@@ -72,10 +72,17 @@ function importCSV(csvContent) {
   const findOrg = db.prepare(`SELECT id FROM organizations WHERE chatgpt_account_id = ?`);
   const findAccount = db.prepare(`SELECT id FROM accounts WHERE email = ?`);
 
-  const insertMember = db.prepare(`
+  const insertOwner = db.prepare(`
     INSERT OR IGNORE INTO org_members (org_id, account_id, role, invite_status)
     VALUES (@org_id, @account_id, 'owner', 'joined')
   `);
+  const insertMember = db.prepare(`
+    INSERT OR IGNORE INTO org_members (org_id, account_id, role, invite_status)
+    VALUES (@org_id, @account_id, 'member', 'joined')
+  `);
+  const orgHasOwner = db.prepare(
+    `SELECT 1 FROM org_members WHERE org_id = ? AND role = 'owner' LIMIT 1`
+  );
 
   // Process in a transaction for performance
   const importAll = db.transaction((rows) => {
@@ -119,11 +126,13 @@ function importCSV(csvContent) {
             if (newOrg) results.newOrgIds.push(newOrg.id);
           }
 
-          // Link account to org
+          // Link account to org — only first account becomes owner
           const org = findOrg.get(jwtData.chatgpt_account_id);
           const account = findAccount.get(email);
           if (org && account) {
-            insertMember.run({ org_id: org.id, account_id: account.id });
+            const hasOwner = orgHasOwner.get(org.id);
+            const stmt = hasOwner ? insertMember : insertOwner;
+            stmt.run({ org_id: org.id, account_id: account.id });
           }
         }
       } catch (err) {
