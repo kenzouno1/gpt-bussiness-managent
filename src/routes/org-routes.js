@@ -1,6 +1,7 @@
 const { Router } = require('express');
 const db = require('../db/database');
 const { checkToken, inviteToOrg, listOrgMembers, listInvites, revokeInvite } = require('../services/chatgpt-api-client');
+const { requireAdmin } = require('../middleware/auth-middleware');
 
 const router = Router();
 
@@ -404,8 +405,8 @@ router.put('/:id', (req, res) => {
   res.json({ success: true });
 });
 
-// Remove a member from org (cannot remove owner)
-router.delete('/:id/members/:memberId', (req, res) => {
+// Remove a member from org (admin only, cannot remove owner)
+router.delete('/:id/members/:memberId', requireAdmin, (req, res) => {
   const member = db.prepare('SELECT * FROM org_members WHERE id = ? AND org_id = ?').get(req.params.memberId, req.params.id);
   if (!member) return res.status(404).json({ error: 'Member not found' });
   if (member.role === 'owner') return res.status(400).json({ error: 'Cannot remove owner' });
@@ -414,8 +415,8 @@ router.delete('/:id/members/:memberId', (req, res) => {
   res.json({ success: true });
 });
 
-// Delete org
-router.delete('/:id', (req, res) => {
+// Delete org (admin only)
+router.delete('/:id', requireAdmin, (req, res) => {
   const result = db.prepare('DELETE FROM organizations WHERE id = ?').run(req.params.id);
   if (result.changes === 0) return res.status(404).json({ error: 'Org not found' });
   res.json({ success: true });

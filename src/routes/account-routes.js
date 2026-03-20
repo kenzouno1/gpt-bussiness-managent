@@ -1,6 +1,7 @@
 const { Router } = require('express');
 const db = require('../db/database');
 const { generateTOTP } = require('../services/totp-service');
+const { requireAdmin } = require('../middleware/auth-middleware');
 
 const router = Router();
 
@@ -64,9 +65,9 @@ router.post('/', (req, res) => {
   }
 });
 
-// Bulk import from text — auto-detect fields via regex
+// Bulk import from text — auto-detect fields via regex (admin only)
 // Supports any order: email, password, 2FA (TOTP base32), JWT token
-router.post('/bulk', (req, res) => {
+router.post('/bulk', requireAdmin, (req, res) => {
   const { text } = req.body;
   if (!text) return res.status(400).json({ error: 'Text content required' });
 
@@ -123,8 +124,8 @@ router.put('/:id', (req, res) => {
   res.json({ success: true });
 });
 
-// Delete account
-router.delete('/:id', (req, res) => {
+// Delete account (admin only)
+router.delete('/:id', requireAdmin, (req, res) => {
   const result = db.prepare('DELETE FROM accounts WHERE id = ?').run(req.params.id);
   if (result.changes === 0) return res.status(404).json({ error: 'Account not found' });
   res.json({ success: true });

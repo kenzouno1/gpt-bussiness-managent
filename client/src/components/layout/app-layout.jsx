@@ -7,6 +7,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Toaster } from '@/components/ui/sonner';
 import { useTheme } from '@/hooks/use-theme';
+import { UserMenu } from '@/components/layout/user-menu';
 
 const navItems = [
   { to: '/', label: 'Bảng điều khiển', icon: LayoutDashboard },
@@ -115,9 +116,7 @@ export function AppLayout() {
               <Bell className="h-4 w-4" />
               <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[9px] font-bold text-primary-foreground">1</span>
             </Button>
-            <div className="ml-1 flex h-8 w-8 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground">
-              B
-            </div>
+            <UserMenu />
           </div>
         </header>
 

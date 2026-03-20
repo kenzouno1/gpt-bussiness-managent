@@ -39,3 +39,15 @@ CREATE TABLE IF NOT EXISTS org_members (
 CREATE INDEX IF NOT EXISTS idx_accounts_chatgpt_account_id ON accounts(chatgpt_account_id);
 CREATE INDEX IF NOT EXISTS idx_org_members_org_id ON org_members(org_id);
 CREATE INDEX IF NOT EXISTS idx_org_members_account_id ON org_members(account_id);
+
+CREATE TABLE IF NOT EXISTS users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  username TEXT UNIQUE NOT NULL,
+  email TEXT UNIQUE NOT NULL,
+  password_hash TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'member' CHECK(role IN ('admin', 'member')),
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
