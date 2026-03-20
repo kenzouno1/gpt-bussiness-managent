@@ -138,4 +138,21 @@ async function revokeInvite(sessionToken, inviteId) {
   }
 }
 
-module.exports = { checkToken, inviteToOrg, listOrgMembers, listInvites, revokeInvite };
+// Remove a member from workspace: DELETE /accounts/{workspace_id}/users/{user_id}
+async function removeMember(sessionToken, workspaceId, userId) {
+  try {
+    const res = await fetch(`${BASE_URL}/accounts/${workspaceId}/users/${userId}`, {
+      method: 'DELETE',
+      headers: authHeaders(sessionToken, workspaceId),
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      return { success: false, error: `HTTP ${res.status}: ${body}` };
+    }
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
+module.exports = { checkToken, inviteToOrg, listOrgMembers, listInvites, revokeInvite, removeMember };

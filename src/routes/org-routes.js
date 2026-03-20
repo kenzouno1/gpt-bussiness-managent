@@ -1,6 +1,6 @@
 const { Router } = require('express');
 const db = require('../db/database');
-const { inviteToOrg, listInvites, revokeInvite } = require('../services/chatgpt-api-client');
+const { inviteToOrg, listInvites, revokeInvite, removeMember, listOrgMembers } = require('../services/chatgpt-api-client');
 const { requireAdmin } = require('../middleware/auth-middleware');
 const { syncOrg, validateOrg, enqueueOrgSync, enqueueAllOrgSync, getOrgSyncStatus } = require('../services/org-sync-worker');
 
@@ -305,10 +305,49 @@ router.put('/:id', (req, res) => {
 });
 
 // Remove a member from org (admin only, cannot remove owner)
-router.delete('/:id/members/:memberId', requireAdmin, (req, res) => {
-  const member = db.prepare('SELECT * FROM org_members WHERE id = ? AND org_id = ?').get(req.params.memberId, req.params.id);
+// Also calls ChatGPT API to actually remove the user from the workspace
+router.delete('/:id/members/:memberId', requireAdmin, async (req, res) => {
+  const org = db.prepare('SELECT * FROM organizations WHERE id = ?').get(req.params.id);
+  if (!org) return res.status(404).json({ error: 'Org not found' });
+
+  const member = db.prepare(`
+    SELECT om.*, a.email FROM org_members om
+    JOIN accounts a ON a.id = om.account_id
+    WHERE om.id = ? AND om.org_id = ?
+  `).get(req.params.memberId, req.params.id);
   if (!member) return res.status(404).json({ error: 'Member not found' });
   if (member.role === 'owner') return res.status(400).json({ error: 'Cannot remove owner' });
+
+  const admin = getAdminToken(req.params.id);
+  if (admin) {
+    const wsId = org.chatgpt_account_id;
+
+    if (member.invite_status === 'joined') {
+      // Remove joined member — find their ChatGPT user_id by email
+      const membersResult = await listOrgMembers(admin.session_token, wsId);
+      if (membersResult.success) {
+        const apiMembers = membersResult.data?.items || membersResult.data?.members || membersResult.data || [];
+        const apiUser = apiMembers.find(m => (m.email || m.user?.email) === member.email);
+        const userId = apiUser?.user?.id || apiUser?.id;
+        if (userId) {
+          const result = await removeMember(admin.session_token, wsId, userId);
+          if (!result.success) console.log(`[org] Failed to remove ${member.email} from ChatGPT: ${result.error}`);
+        }
+      }
+    } else {
+      // Revoke pending invite — find invite_id by email
+      const invitesResult = await listInvites(admin.session_token, wsId);
+      if (invitesResult.success) {
+        const invites = invitesResult.data?.items || invitesResult.data?.invites || invitesResult.data || [];
+        const inv = invites.find(i => (i.email || i.email_address) === member.email);
+        const inviteId = inv?.id || inv?.invite_id;
+        if (inviteId) {
+          const result = await revokeInvite(admin.session_token, inviteId);
+          if (!result.success) console.log(`[org] Failed to revoke invite for ${member.email}: ${result.error}`);
+        }
+      }
+    }
+  }
 
   db.prepare('DELETE FROM org_members WHERE id = ?').run(req.params.memberId);
   res.json({ success: true });
