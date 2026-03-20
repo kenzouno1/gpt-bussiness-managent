@@ -29,8 +29,9 @@ async function syncOrg(orgId) {
   }
 
   const token = admin.session_token;
-  const membersResult = await listOrgMembers(token);
-  const invitesResult = await listInvites(token);
+  const wsId = org.chatgpt_account_id;
+  const membersResult = await listOrgMembers(token, wsId);
+  const invitesResult = await listInvites(token, wsId);
   const synced = { members: 0, invites: 0, errors: [] };
 
   // Both fail → token invalid

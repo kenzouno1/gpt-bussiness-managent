@@ -168,7 +168,7 @@ router.post('/:id/revoke', async (req, res) => {
   if (!admin) return res.status(400).json({ error: 'No session token' });
   const token = admin.session_token;
 
-  const invitesResult = await listInvites(token);
+  const invitesResult = await listInvites(token, org.chatgpt_account_id);
   if (!invitesResult.success) return res.json(invitesResult);
 
   const invites = invitesResult.data?.items || invitesResult.data?.invites || invitesResult.data || [];

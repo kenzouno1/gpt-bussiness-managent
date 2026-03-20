@@ -85,8 +85,8 @@ async function getWorkspaceId(token) {
 }
 
 // List workspace members: /accounts/{workspace_id}/users
-async function listOrgMembers(sessionToken) {
-  const wsId = await getWorkspaceId(sessionToken);
+async function listOrgMembers(sessionToken, workspaceId) {
+  const wsId = workspaceId || await getWorkspaceId(sessionToken);
   if (!wsId) return { success: false, error: 'Cannot find workspace account' };
 
   try {
@@ -102,8 +102,8 @@ async function listOrgMembers(sessionToken) {
 }
 
 // List pending invites: /accounts/{workspace_id}/invites
-async function listInvites(sessionToken) {
-  const wsId = await getWorkspaceId(sessionToken);
+async function listInvites(sessionToken, workspaceId) {
+  const wsId = workspaceId || await getWorkspaceId(sessionToken);
   if (!wsId) return { success: false, error: 'Cannot find workspace account' };
 
   try {
