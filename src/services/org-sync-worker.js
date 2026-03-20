@@ -93,7 +93,7 @@ async function syncOrg(orgId) {
   }
 
   // Remove stale members not present in API response, but NEVER remove the owner
-  if (membersResult.success && apiAccountIds.size > 0) {
+  if (membersResult.success) {
     const stale = db.prepare(
       `SELECT id, account_id FROM org_members WHERE org_id = ?`
     ).all(orgId);
