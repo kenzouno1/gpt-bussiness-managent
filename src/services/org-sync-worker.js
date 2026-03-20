@@ -42,6 +42,9 @@ async function syncOrg(orgId) {
     return { success: false, sync_status: status, error: errMsg };
   }
 
+  // Collect account IDs confirmed by API (members + invites) to prune stale entries
+  const apiAccountIds = new Set();
+
   // Process invites FIRST so pending accounts are marked 'sent',
   // then members overwrite to 'joined' for those who actually accepted.
   if (invitesResult.success) {
@@ -51,6 +54,7 @@ async function syncOrg(orgId) {
       if (!email) continue;
       const account = db.prepare('SELECT id FROM accounts WHERE email = ?').get(email);
       if (account) {
+        apiAccountIds.add(account.id);
         db.prepare(`INSERT OR REPLACE INTO org_members (org_id, account_id, role, invited_at, invite_status) VALUES (?, ?, 'member', CURRENT_TIMESTAMP, 'sent')`)
           .run(orgId, account.id);
         synced.invites++;
@@ -67,6 +71,7 @@ async function syncOrg(orgId) {
       if (!email) continue;
       const account = db.prepare('SELECT id FROM accounts WHERE email = ?').get(email);
       if (account) {
+        apiAccountIds.add(account.id);
         const existing = db.prepare('SELECT role FROM org_members WHERE org_id = ? AND account_id = ?').get(orgId, account.id);
         // Preserve existing owner role from import; also honor API role — don't assume token holder is owner
         const apiRole = m.role || 'member';
@@ -78,6 +83,21 @@ async function syncOrg(orgId) {
     }
   } else {
     synced.errors.push(`Members: ${membersResult.error}`);
+  }
+
+  // Remove non-owner members not present in API response (stale/incorrect entries)
+  if (membersResult.success && apiAccountIds.size > 0) {
+    const stale = db.prepare(
+      `SELECT id, account_id FROM org_members WHERE org_id = ? AND role != 'owner'`
+    ).all(orgId);
+    let removed = 0;
+    for (const row of stale) {
+      if (!apiAccountIds.has(row.account_id)) {
+        db.prepare('DELETE FROM org_members WHERE id = ?').run(row.id);
+        removed++;
+      }
+    }
+    synced.removed = removed;
   }
 
   db.prepare(`UPDATE organizations SET sync_status = 'healthy', sync_error = NULL, last_synced = CURRENT_TIMESTAMP WHERE id = ?`)
