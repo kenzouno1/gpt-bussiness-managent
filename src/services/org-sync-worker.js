@@ -45,6 +45,8 @@ async function syncOrg(orgId) {
 
   // Collect account IDs confirmed by API (members + invites) to prune stale entries
   const apiAccountIds = new Set();
+  // Track all API emails for pruning (including those not in our accounts table)
+  const apiEmails = new Set();
 
   // Pre-fetch owner account_id to protect from role downgrade during sync
   const ownerAccountId = db.prepare(
@@ -58,6 +60,7 @@ async function syncOrg(orgId) {
     for (const inv of apiInvites) {
       const email = inv.email || inv.email_address;
       if (!email) continue;
+      apiEmails.add(email.toLowerCase());
       const account = db.prepare('SELECT id FROM accounts WHERE email = ?').get(email);
       if (account) {
         apiAccountIds.add(account.id);
@@ -77,6 +80,7 @@ async function syncOrg(orgId) {
     for (const m of apiMembers) {
       const email = m.email || m.user?.email;
       if (!email) continue;
+      apiEmails.add(email.toLowerCase());
       const account = db.prepare('SELECT id FROM accounts WHERE email = ?').get(email);
       if (account) {
         apiAccountIds.add(account.id);
@@ -94,18 +98,24 @@ async function syncOrg(orgId) {
 
   // Remove stale members not present in API response, but NEVER remove the owner
   if (membersResult.success) {
-    const stale = db.prepare(
-      `SELECT id, account_id FROM org_members WHERE org_id = ?`
+    const dbMembers = db.prepare(
+      `SELECT om.id, om.account_id, a.email FROM org_members om
+       JOIN accounts a ON a.id = om.account_id WHERE om.org_id = ?`
     ).all(orgId);
     let removed = 0;
-    for (const row of stale) {
-      if (!apiAccountIds.has(row.account_id) && row.account_id !== ownerAccountId) {
-        db.prepare('DELETE FROM org_members WHERE id = ?').run(row.id);
-        removed++;
-      }
+    for (const row of dbMembers) {
+      // Keep owner always; keep if account_id or email found in API response
+      if (row.account_id === ownerAccountId) continue;
+      if (apiAccountIds.has(row.account_id)) continue;
+      if (apiEmails.has(row.email.toLowerCase())) continue;
+      db.prepare('DELETE FROM org_members WHERE id = ?').run(row.id);
+      removed++;
     }
+    if (removed > 0) console.log(`[org-sync] Org ${orgId}: removed ${removed} stale members`);
     synced.removed = removed;
   }
+
+  console.log(`[org-sync] Org ${orgId}: API emails=[${[...apiEmails].join(',')}] apiAccountIds=[${[...apiAccountIds].join(',')}] synced=${JSON.stringify(synced)}`);
 
   db.prepare(`UPDATE organizations SET sync_status = 'healthy', sync_error = NULL, last_synced = CURRENT_TIMESTAMP WHERE id = ?`)
     .run(orgId);
