@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { Search, RefreshCw, Building2, Users, Send, CheckCircle, CheckSquare, Square, ShieldCheck, AlertTriangle, Upload, Trash2 } from 'lucide-react';
+import { Search, RefreshCw, Building2, Users, Send, CheckCircle, CheckSquare, Square, ShieldCheck, AlertTriangle, Upload, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -8,6 +8,7 @@ import { OrgCard } from '@/components/orgs/org-card';
 import { OrgDetailDialog } from '@/components/orgs/org-detail-dialog';
 import { AddTeamDialog } from '@/components/orgs/add-team-dialog';
 import { api } from '@/lib/api';
+import { pageRange } from '@/lib/pagination';
 import { toast } from 'sonner';
 
 const FILTERS = [
@@ -29,6 +30,8 @@ export function OrgsTab() {
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState(new Set());
   const [bulkInviting, setBulkInviting] = useState(false);
+  const [page, setPage] = useState(1);
+  const perPage = 20;
   const lastValidated = useRef(0);
 
   const loadOrgs = async () => {
@@ -84,6 +87,12 @@ export function OrgsTab() {
       return matchSearch && matchFilter;
     });
   }, [orgs, search, filter]);
+
+  // Reset page when filter/search changes
+  useEffect(() => { setPage(1); }, [search, filter]);
+
+  const totalPages = Math.ceil(filtered.length / perPage);
+  const paginated = filtered.slice((page - 1) * perPage, page * perPage);
 
   const toggleSelect = (id) => {
     setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
@@ -199,11 +208,32 @@ export function OrgsTab() {
         </div>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {filtered.map(org => (
+          {paginated.map(org => (
             <OrgCard key={org.id} org={org} selectable={selectMode} isSelected={selected.has(org.id)}
               onToggleSelect={() => toggleSelect(org.id)} onSelect={(id) => { setSelectedId(id); setDialogOpen(true); }}
               onInvite={handleInvite} onDelete={handleDelete} />
           ))}
+        </div>
+      )}
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-1.5 pt-2">
+          <Button variant="outline" size="icon" className="h-8 w-8" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          {pageRange(page, totalPages).map((p, i) =>
+            p === '...' ? (
+              <span key={`dot-${i}`} className="px-1 text-sm text-muted-foreground">...</span>
+            ) : (
+              <Button key={p} variant={p === page ? 'default' : 'outline'} size="icon" className="h-8 w-8 text-xs" onClick={() => setPage(p)}>
+                {p}
+              </Button>
+            )
+          )}
+          <Button variant="outline" size="icon" className="h-8 w-8" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>
+            <ChevronRight className="h-4 w-4" />
+          </Button>
         </div>
       )}
 

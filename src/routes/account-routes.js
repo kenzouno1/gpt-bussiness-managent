@@ -129,10 +129,35 @@ router.put('/:id', (req, res) => {
   res.json({ success: true });
 });
 
-// Delete account (admin only)
+// Bulk delete accounts (admin only) — unlinks org memberships first
+router.post('/bulk-delete', requireAdmin, (req, res) => {
+  const rawIds = req.body.ids;
+  if (!Array.isArray(rawIds) || rawIds.length === 0) return res.status(400).json({ error: 'No IDs provided' });
+  const ids = rawIds.filter(id => Number.isInteger(id) && id > 0);
+  if (ids.length === 0) return res.status(400).json({ error: 'No valid IDs provided' });
+
+  const delMembers = db.prepare('DELETE FROM org_members WHERE account_id = ?');
+  const delAccount = db.prepare('DELETE FROM accounts WHERE id = ?');
+  const deleteAll = db.transaction((accountIds) => {
+    let deleted = 0;
+    for (const id of accountIds) {
+      delMembers.run(id);
+      deleted += delAccount.run(id).changes;
+    }
+    return deleted;
+  });
+
+  const deleted = deleteAll(ids);
+  res.json({ success: true, deleted });
+});
+
+// Delete account (admin only) — unlinks org memberships first
 router.delete('/:id', requireAdmin, (req, res) => {
-  const result = db.prepare('DELETE FROM accounts WHERE id = ?').run(req.params.id);
-  if (result.changes === 0) return res.status(404).json({ error: 'Account not found' });
+  const exists = db.prepare('SELECT id FROM accounts WHERE id = ?').get(req.params.id);
+  if (!exists) return res.status(404).json({ error: 'Account not found' });
+
+  db.prepare('DELETE FROM org_members WHERE account_id = ?').run(req.params.id);
+  db.prepare('DELETE FROM accounts WHERE id = ?').run(req.params.id);
   res.json({ success: true });
 });
 

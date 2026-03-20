@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Search, RefreshCw, Plus, Users, ShieldCheck, UserX, UserCheck, Send, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, RefreshCw, Plus, Users, ShieldCheck, UserX, UserCheck, Send, ChevronLeft, ChevronRight, CheckSquare, Square, Trash2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -9,20 +9,8 @@ import { AccountFormDialog } from '@/components/accounts/account-form-dialog';
 import { BulkImportDialog } from '@/components/accounts/bulk-import-dialog';
 import { AccountCard } from '@/components/accounts/account-card';
 import { api } from '@/lib/api';
+import { pageRange } from '@/lib/pagination';
 import { toast } from 'sonner';
-
-// Generate page numbers: [1, 2, '...', 8, 9, 10] style
-function pageRange(current, total) {
-  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
-  const pages = new Set([1, 2, total - 1, total, current - 1, current, current + 1]);
-  const sorted = [...pages].filter(p => p >= 1 && p <= total).sort((a, b) => a - b);
-  const result = [];
-  for (let i = 0; i < sorted.length; i++) {
-    if (i > 0 && sorted[i] - sorted[i - 1] > 1) result.push('...');
-    result.push(sorted[i]);
-  }
-  return result;
-}
 
 const FILTERS = [
   { key: 'all', label: 'Tất cả', icon: Users, color: '#3b82f6' },
@@ -45,6 +33,8 @@ export function AccountsPage() {
   const [groups, setGroups] = useState({ orphan: new Set(), invited: new Set(), joined: new Set() });
   const [page, setPage] = useState(1);
   const perPage = 20;
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState(new Set());
 
   const load = async () => {
     setLoading(true);
@@ -87,8 +77,8 @@ export function AccountsPage() {
     });
   }, [accounts, search, filter, groups]);
 
-  // Reset page when filter/search changes
-  useEffect(() => { setPage(1); }, [search, filter]);
+  // Reset page and selection when filter/search changes
+  useEffect(() => { setPage(1); setSelected(new Set()); }, [search, filter]);
 
   const totalPages = Math.ceil(filtered.length / perPage);
   const paginated = filtered.slice((page - 1) * perPage, page * perPage);
@@ -97,6 +87,23 @@ export function AccountsPage() {
     if (!confirm('Xóa tài khoản này?')) return;
     try { await api.del(`/api/accounts/${id}`); toast.success('Đã xóa'); load(); }
     catch (err) { toast.error(err.message); }
+  };
+
+  const toggleSelect = (id) => {
+    setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  };
+  const selectAll = () => {
+    setSelected(selected.size === filtered.length ? new Set() : new Set(filtered.map(a => a.id)));
+  };
+
+  const handleBulkDelete = async () => {
+    if (selected.size === 0) { toast.warning('Chưa chọn tài khoản nào'); return; }
+    if (!confirm(`Xóa ${selected.size} tài khoản đã chọn?`)) return;
+    try {
+      const r = await api.post('/api/accounts/bulk-delete', { ids: [...selected] });
+      toast.success(`Đã xóa ${r.deleted} tài khoản`);
+      setSelected(new Set()); setSelectMode(false); load();
+    } catch (err) { toast.error(err.message); }
   };
 
   return (
@@ -108,6 +115,15 @@ export function AccountsPage() {
           <p className="text-sm text-muted-foreground">Quản lý email, password, 2FA</p>
         </div>
         <div className="flex items-center gap-2">
+          {selectMode && selected.size > 0 && (
+            <Button size="sm" variant="destructive" className="gap-1.5" onClick={handleBulkDelete}>
+              <Trash2 className="h-3.5 w-3.5" /> Xóa {selected.size}
+            </Button>
+          )}
+          <Button variant="outline" size="sm" className={`gap-1.5 ${selectMode ? 'border-primary text-primary' : ''}`}
+            onClick={() => { setSelectMode(!selectMode); setSelected(new Set()); }}>
+            <CheckSquare className="h-3.5 w-3.5" /> {selectMode ? 'Hủy chọn' : 'Chọn'}
+          </Button>
           <BulkImportDialog onImported={load} />
           <Button size="sm" className="gap-1.5" onClick={() => { setEditId(null); setFormOpen(true); }}>
             <Plus className="h-3.5 w-3.5" /> Thêm
@@ -155,6 +171,14 @@ export function AccountsPage() {
         )}
       </div>
 
+      {/* Select all */}
+      {selectMode && (
+        <Button variant="ghost" size="sm" onClick={selectAll} className="gap-1.5 text-xs">
+          {selected.size === filtered.length ? <CheckSquare className="h-3.5 w-3.5" /> : <Square className="h-3.5 w-3.5" />}
+          {selected.size === filtered.length ? 'Bỏ chọn tất cả' : 'Chọn tất cả'}
+        </Button>
+      )}
+
       {/* Account List */}
       {loading ? (
         <div className="flex justify-center py-16"><RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" /></div>
@@ -168,6 +192,8 @@ export function AccountsPage() {
           {paginated.map(acc => (
             <AccountCard key={acc.id} account={acc}
               status={groups.joined.has(acc.id) ? 'joined' : groups.invited.has(acc.id) ? 'invited' : 'orphan'}
+              selectable={selectMode} isSelected={selected.has(acc.id)}
+              onToggleSelect={() => toggleSelect(acc.id)}
               onSelect={() => { setSelectedId(acc.id); setSheetOpen(true); }}
               onEdit={() => { setEditId(acc.id); setFormOpen(true); }}
               onDelete={() => handleDelete(acc.id)} />

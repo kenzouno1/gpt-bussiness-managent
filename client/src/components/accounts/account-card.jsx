@@ -1,4 +1,4 @@
-import { Trash2, Pencil, Eye, Users } from 'lucide-react';
+import { Trash2, Pencil, Eye, Users, CheckSquare, Square } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { CopyField } from '@/components/ui/copy-field';
@@ -10,19 +10,25 @@ const statusBadge = {
   joined: { label: 'Đã tham gia', class: 'bg-green-500/15 text-green-600 border-green-500/30' },
 };
 
-export function AccountCard({ account, status = 'orphan', onSelect, onEdit, onDelete }) {
+export function AccountCard({ account, status = 'orphan', onSelect, onEdit, onDelete, selectable = false, isSelected = false, onToggleSelect }) {
   const badge = statusBadge[status] || statusBadge.orphan;
   const shortName = account.email.split('@')[0];
 
   return (
-    <Card className="group overflow-hidden transition-all hover:shadow-lg hover:border-primary/20 cursor-pointer"
-      onClick={onSelect}>
+    <Card className={`group overflow-hidden transition-all hover:shadow-lg hover:border-primary/20 cursor-pointer ${isSelected ? 'ring-2 ring-primary border-primary' : ''}`}
+      onClick={selectable ? onToggleSelect : onSelect}>
       <CardContent className="p-0">
         {/* Header */}
         <div className="flex items-start gap-3 p-4">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-sm font-bold text-primary">
-            {account.id}
-          </div>
+          {selectable ? (
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center">
+              {isSelected ? <CheckSquare className="h-5 w-5 text-primary" /> : <Square className="h-5 w-5 text-muted-foreground" />}
+            </div>
+          ) : (
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-sm font-bold text-primary">
+              {account.id}
+            </div>
+          )}
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold">{shortName}</p>
             <div className="mt-1.5 flex flex-wrap gap-1">
