@@ -45,6 +45,11 @@ async function syncOrg(orgId) {
   // Collect account IDs confirmed by API (members + invites) to prune stale entries
   const apiAccountIds = new Set();
 
+  // Pre-fetch owner account_id to protect from role downgrade during sync
+  const ownerAccountId = db.prepare(
+    'SELECT account_id FROM org_members WHERE org_id = ? AND role = ?'
+  ).get(orgId, 'owner')?.account_id;
+
   // Process invites FIRST so pending accounts are marked 'sent',
   // then members overwrite to 'joined' for those who actually accepted.
   if (invitesResult.success) {
@@ -55,6 +60,8 @@ async function syncOrg(orgId) {
       const account = db.prepare('SELECT id FROM accounts WHERE email = ?').get(email);
       if (account) {
         apiAccountIds.add(account.id);
+        // Skip owner — don't downgrade role via invite processing
+        if (account.id === ownerAccountId) continue;
         db.prepare(`INSERT OR REPLACE INTO org_members (org_id, account_id, role, invited_at, invite_status) VALUES (?, ?, 'member', CURRENT_TIMESTAMP, 'sent')`)
           .run(orgId, account.id);
         synced.invites++;
@@ -83,14 +90,14 @@ async function syncOrg(orgId) {
     synced.errors.push(`Members: ${membersResult.error}`);
   }
 
-  // Remove all members not present in API response (stale/incorrect entries)
+  // Remove stale members not present in API response, but NEVER remove the owner
   if (membersResult.success && apiAccountIds.size > 0) {
     const stale = db.prepare(
       `SELECT id, account_id FROM org_members WHERE org_id = ?`
     ).all(orgId);
     let removed = 0;
     for (const row of stale) {
-      if (!apiAccountIds.has(row.account_id)) {
+      if (!apiAccountIds.has(row.account_id) && row.account_id !== ownerAccountId) {
         db.prepare('DELETE FROM org_members WHERE id = ?').run(row.id);
         removed++;
       }
