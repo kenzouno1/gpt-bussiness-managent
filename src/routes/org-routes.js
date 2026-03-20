@@ -97,15 +97,15 @@ router.post('/:id/invite', async (req, res) => {
   if (!admin) return res.status(400).json({ error: 'No session token' });
   const token = admin.session_token;
 
-  const MAX_INVITE = 4;
-  // Count joined members AND pending/sent invites (excluding owner) toward limit
-  const occupiedCount = db.prepare(
-    `SELECT COUNT(*) as c FROM org_members WHERE org_id = ? AND invite_status IN ('joined', 'sent', 'pending') AND role != 'owner'`
+  const MAX_MEMBERS = 5; // Total including owner
+  // Count ALL members (owner + joined + pending/sent invites) toward limit
+  const totalCount = db.prepare(
+    `SELECT COUNT(*) as c FROM org_members WHERE org_id = ? AND invite_status IN ('joined', 'sent', 'pending')`
   ).get(req.params.id).c;
-  const slotsLeft = Math.max(0, MAX_INVITE - occupiedCount);
+  const slotsLeft = Math.max(0, MAX_MEMBERS - totalCount);
 
   if (slotsLeft === 0) {
-    return res.json({ invited: 0, failed: 0, errors: [], message: 'Đã đạt tối đa 4 thành viên' });
+    return res.json({ invited: 0, failed: 0, errors: [], message: 'Đã đạt tối đa 5 thành viên (bao gồm owner)' });
   }
 
   const { account_ids } = req.body;
