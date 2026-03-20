@@ -83,16 +83,15 @@ function importCSV(csvContent) {
   const findOrg = db.prepare(`SELECT id FROM organizations WHERE chatgpt_account_id = ?`);
   const findAccount = db.prepare(`SELECT id FROM accounts WHERE email = ?`);
 
-  const insertOwner = db.prepare(`
-    INSERT OR IGNORE INTO org_members (org_id, account_id, role, invite_status)
+  // Upsert owner: insert or restore owner role if sync changed it
+  const upsertOwner = db.prepare(`
+    INSERT INTO org_members (org_id, account_id, role, invite_status)
     VALUES (@org_id, @account_id, 'owner', 'joined')
+    ON CONFLICT(org_id, account_id) DO UPDATE SET role = 'owner', invite_status = 'joined'
   `);
-  const orgHasOwner = db.prepare(
-    `SELECT 1 FROM org_members WHERE org_id = ? AND role = 'owner' LIMIT 1`
-  );
-  // Check if account is already owner of any org
-  const accountIsOwner = db.prepare(
-    `SELECT 1 FROM org_members WHERE account_id = ? AND role = 'owner' LIMIT 1`
+  // Check if account is already linked to this org (any role)
+  const accountInOrg = db.prepare(
+    `SELECT 1 FROM org_members WHERE org_id = ? AND account_id = ? LIMIT 1`
   );
 
   // Process in a transaction for performance
@@ -124,11 +123,8 @@ function importCSV(csvContent) {
           results.imported++; // new account
         }
 
-        // Auto-create org and link as owner — skip if account already owns an org
+        // Auto-create org and link as owner
         if (jwtData.chatgpt_account_id) {
-          const account = findAccount.get(email);
-          if (account && accountIsOwner.get(account.id)) continue; // already an owner somewhere
-
           const orgName = `${email} - ${jwtData.chatgpt_account_id.substring(0, 8)}`;
           const orgResult = insertOrg.run({
             chatgpt_account_id: jwtData.chatgpt_account_id,
@@ -141,10 +137,11 @@ function importCSV(csvContent) {
             if (newOrg) results.newOrgIds.push(newOrg.id);
           }
 
-          // Link as owner only if org has no owner yet
+          // Upsert owner link — restores role if sync changed it, skips if already linked to different org
           const org = findOrg.get(jwtData.chatgpt_account_id);
-          if (org && account && !orgHasOwner.get(org.id)) {
-            insertOwner.run({ org_id: org.id, account_id: account.id });
+          const account = findAccount.get(email);
+          if (org && account) {
+            upsertOwner.run({ org_id: org.id, account_id: account.id });
           }
         }
       } catch (err) {

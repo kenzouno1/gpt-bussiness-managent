@@ -211,9 +211,10 @@ router.post('/', (req, res) => {
   const findAcc = db.prepare('SELECT id FROM accounts WHERE email = ?');
   const insertOrg = db.prepare('INSERT OR IGNORE INTO organizations (chatgpt_account_id, name, plan_type) VALUES (?, ?, ?)');
   const findOrg = db.prepare('SELECT id FROM organizations WHERE chatgpt_account_id = ?');
-  const insertOwner = db.prepare('INSERT OR IGNORE INTO org_members (org_id, account_id, role, invite_status) VALUES (?, ?, ?, ?)');
-  const orgHasOwner = db.prepare('SELECT 1 FROM org_members WHERE org_id = ? AND role = ? LIMIT 1');
-  const accountIsOwner = db.prepare('SELECT 1 FROM org_members WHERE account_id = ? AND role = ? LIMIT 1');
+  const upsertOwner = db.prepare(`
+    INSERT INTO org_members (org_id, account_id, role, invite_status) VALUES (?, ?, 'owner', 'joined')
+    ON CONFLICT(org_id, account_id) DO UPDATE SET role = 'owner', invite_status = 'joined'
+  `);
 
   const newOrgIds = [];
   const importAll = db.transaction(() => {
@@ -236,9 +237,6 @@ router.post('/', (req, res) => {
         const account = findAcc.get(email);
         if (!account) { skipped++; continue; }
 
-        // Skip if account already owns an org
-        if (accountIsOwner.get(account.id, 'owner')) { skipped++; continue; }
-
         // Create org named after email prefix
         const orgId = email.split('@')[0];
         const orgName = `${email.split('@')[0]}`;
@@ -249,10 +247,8 @@ router.post('/', (req, res) => {
         // Track newly created orgs for sync
         if (orgResult.changes > 0) newOrgIds.push(org.id);
 
-        // Link as owner only if org has no owner yet
-        if (!orgHasOwner.get(org.id, 'owner')) {
-          insertOwner.run(org.id, account.id, 'owner', 'joined');
-        }
+        // Upsert owner link — restores role if sync changed it
+        upsertOwner.run(org.id, account.id);
         created++;
       } catch (err) {
         errors.push(`${line.substring(0, 40)}: ${err.message}`);

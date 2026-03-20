@@ -79,7 +79,8 @@ async function syncOrg(orgId) {
       const account = db.prepare('SELECT id FROM accounts WHERE email = ?').get(email);
       if (account) {
         apiAccountIds.add(account.id);
-        // Use API role as source of truth for all users including owner
+        // Skip owner — never overwrite owner role from API
+        if (account.id === ownerAccountId) continue;
         const role = m.role || 'member';
         db.prepare(`INSERT OR REPLACE INTO org_members (org_id, account_id, role, invite_status) VALUES (?, ?, ?, 'joined')`)
           .run(orgId, account.id, role);
