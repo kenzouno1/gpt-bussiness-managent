@@ -42,6 +42,24 @@ async function syncOrg(orgId) {
     return { success: false, sync_status: status, error: errMsg };
   }
 
+  // Process invites FIRST so pending accounts are marked 'sent',
+  // then members overwrite to 'joined' for those who actually accepted.
+  if (invitesResult.success) {
+    const apiInvites = invitesResult.data?.items || invitesResult.data?.invites || invitesResult.data || [];
+    for (const inv of apiInvites) {
+      const email = inv.email;
+      if (!email) continue;
+      const account = db.prepare('SELECT id FROM accounts WHERE email = ?').get(email);
+      if (account) {
+        db.prepare(`INSERT OR REPLACE INTO org_members (org_id, account_id, role, invited_at, invite_status) VALUES (?, ?, 'member', CURRENT_TIMESTAMP, 'sent')`)
+          .run(orgId, account.id);
+        synced.invites++;
+      }
+    }
+  } else {
+    synced.errors.push(`Invites: ${invitesResult.error}`);
+  }
+
   if (membersResult.success) {
     const apiMembers = membersResult.data?.items || membersResult.data?.members || membersResult.data || [];
     for (const m of apiMembers) {
@@ -59,26 +77,6 @@ async function syncOrg(orgId) {
     }
   } else {
     synced.errors.push(`Members: ${membersResult.error}`);
-  }
-
-  if (invitesResult.success) {
-    const apiInvites = invitesResult.data?.items || invitesResult.data?.invites || invitesResult.data || [];
-    for (const inv of apiInvites) {
-      const email = inv.email;
-      if (!email) continue;
-      const account = db.prepare('SELECT id FROM accounts WHERE email = ?').get(email);
-      if (account) {
-        const existing = db.prepare('SELECT invite_status FROM org_members WHERE org_id = ? AND account_id = ?')
-          .get(orgId, account.id);
-        if (!existing || existing.invite_status !== 'joined') {
-          db.prepare(`INSERT OR REPLACE INTO org_members (org_id, account_id, role, invited_at, invite_status) VALUES (?, ?, 'member', CURRENT_TIMESTAMP, 'sent')`)
-            .run(orgId, account.id);
-          synced.invites++;
-        }
-      }
-    }
-  } else {
-    synced.errors.push(`Invites: ${invitesResult.error}`);
   }
 
   db.prepare(`UPDATE organizations SET sync_status = 'healthy', sync_error = NULL, last_synced = CURRENT_TIMESTAMP WHERE id = ?`)
