@@ -215,6 +215,7 @@ router.post('/', (req, res) => {
     INSERT INTO org_members (org_id, account_id, role, invite_status) VALUES (?, ?, 'owner', 'joined')
     ON CONFLICT(org_id, account_id) DO UPDATE SET role = 'owner', invite_status = 'joined'
   `);
+  const accountHasOrg = db.prepare('SELECT org_id FROM org_members WHERE account_id = ? LIMIT 1');
 
   const newOrgIds = [];
   const importAll = db.transaction(() => {
@@ -237,6 +238,13 @@ router.post('/', (req, res) => {
         const account = findAcc.get(email);
         if (!account) { skipped++; continue; }
 
+        // Skip org creation if account already belongs to an org
+        const existingOrg = accountHasOrg.get(account.id);
+        if (existingOrg) {
+          upsertOwner.run(existingOrg.org_id, account.id);
+          created++; continue;
+        }
+
         // Create org named after email prefix
         const orgId = email.split('@')[0];
         const orgName = `${email.split('@')[0]}`;
@@ -247,7 +255,7 @@ router.post('/', (req, res) => {
         // Track newly created orgs for sync
         if (orgResult.changes > 0) newOrgIds.push(org.id);
 
-        // Upsert owner link — restores role if sync changed it
+        // Link as owner
         upsertOwner.run(org.id, account.id);
         created++;
       } catch (err) {

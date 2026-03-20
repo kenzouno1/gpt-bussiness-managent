@@ -89,9 +89,9 @@ function importCSV(csvContent) {
     VALUES (@org_id, @account_id, 'owner', 'joined')
     ON CONFLICT(org_id, account_id) DO UPDATE SET role = 'owner', invite_status = 'joined'
   `);
-  // Check if account is already linked to this org (any role)
-  const accountInOrg = db.prepare(
-    `SELECT 1 FROM org_members WHERE org_id = ? AND account_id = ? LIMIT 1`
+  // Check if account already belongs to any org
+  const accountHasOrg = db.prepare(
+    `SELECT org_id FROM org_members WHERE account_id = ? LIMIT 1`
   );
 
   // Process in a transaction for performance
@@ -125,6 +125,17 @@ function importCSV(csvContent) {
 
         // Auto-create org and link as owner
         if (jwtData.chatgpt_account_id) {
+          const account = findAccount.get(email);
+          if (!account) continue;
+
+          // Skip if account already belongs to an org (sync may have changed chatgpt_account_id)
+          const existingOrg = accountHasOrg.get(account.id);
+          if (existingOrg) {
+            // Restore owner role on existing org
+            upsertOwner.run({ org_id: existingOrg.org_id, account_id: account.id });
+            continue;
+          }
+
           const orgName = `${email} - ${jwtData.chatgpt_account_id.substring(0, 8)}`;
           const orgResult = insertOrg.run({
             chatgpt_account_id: jwtData.chatgpt_account_id,
@@ -137,10 +148,9 @@ function importCSV(csvContent) {
             if (newOrg) results.newOrgIds.push(newOrg.id);
           }
 
-          // Upsert owner link — restores role if sync changed it, skips if already linked to different org
+          // Link as owner to new org
           const org = findOrg.get(jwtData.chatgpt_account_id);
-          const account = findAccount.get(email);
-          if (org && account) {
+          if (org) {
             upsertOwner.run({ org_id: org.id, account_id: account.id });
           }
         }
