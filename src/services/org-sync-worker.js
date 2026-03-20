@@ -56,7 +56,7 @@ async function syncOrg(orgId) {
   if (invitesResult.success) {
     const apiInvites = invitesResult.data?.items || invitesResult.data?.invites || invitesResult.data || [];
     for (const inv of apiInvites) {
-      const email = inv.email;
+      const email = inv.email || inv.email_address;
       if (!email) continue;
       const account = db.prepare('SELECT id FROM accounts WHERE email = ?').get(email);
       if (account) {
