@@ -92,11 +92,11 @@ router.post('/:id/invite', async (req, res) => {
   const token = admin.session_token;
 
   const MAX_INVITE = 4;
-  // Only count joined members (not pending invites) toward limit
-  const joinedCount = db.prepare(
-    `SELECT COUNT(*) as c FROM org_members WHERE org_id = ? AND invite_status = 'joined' AND role != 'owner'`
+  // Count joined members AND pending/sent invites (excluding owner) toward limit
+  const occupiedCount = db.prepare(
+    `SELECT COUNT(*) as c FROM org_members WHERE org_id = ? AND invite_status IN ('joined', 'sent', 'pending') AND role != 'owner'`
   ).get(req.params.id).c;
-  const slotsLeft = Math.max(0, MAX_INVITE - joinedCount);
+  const slotsLeft = Math.max(0, MAX_INVITE - occupiedCount);
 
   if (slotsLeft === 0) {
     return res.json({ invited: 0, failed: 0, errors: [], message: 'Đã đạt tối đa 4 thành viên' });
