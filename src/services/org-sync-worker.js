@@ -72,10 +72,8 @@ async function syncOrg(orgId) {
       const account = db.prepare('SELECT id FROM accounts WHERE email = ?').get(email);
       if (account) {
         apiAccountIds.add(account.id);
-        const existing = db.prepare('SELECT role FROM org_members WHERE org_id = ? AND account_id = ?').get(orgId, account.id);
-        // Preserve existing owner role from import; also honor API role — don't assume token holder is owner
-        const apiRole = m.role || 'member';
-        const role = existing?.role === 'owner' || apiRole === 'owner' ? 'owner' : apiRole;
+        // Use API role as source of truth for all users including owner
+        const role = m.role || 'member';
         db.prepare(`INSERT OR REPLACE INTO org_members (org_id, account_id, role, invite_status) VALUES (?, ?, ?, 'joined')`)
           .run(orgId, account.id, role);
         synced.members++;
@@ -85,10 +83,10 @@ async function syncOrg(orgId) {
     synced.errors.push(`Members: ${membersResult.error}`);
   }
 
-  // Remove non-owner members not present in API response (stale/incorrect entries)
+  // Remove all members not present in API response (stale/incorrect entries)
   if (membersResult.success && apiAccountIds.size > 0) {
     const stale = db.prepare(
-      `SELECT id, account_id FROM org_members WHERE org_id = ? AND role != 'owner'`
+      `SELECT id, account_id FROM org_members WHERE org_id = ?`
     ).all(orgId);
     let removed = 0;
     for (const row of stale) {
