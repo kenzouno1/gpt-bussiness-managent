@@ -16,7 +16,7 @@ const statusConfig = {
   owner: { label: 'Owner', variant: 'default', color: 'bg-primary/15 text-primary' },
 };
 
-export function OrgDetailDialog({ orgId, open, onOpenChange, onInvite }) {
+export function OrgDetailDialog({ orgId, open, onOpenChange, onInvite, onDataChanged }) {
   const [org, setOrg] = useState(null);
   const [syncing, setSyncing] = useState(false);
   const [revoking, setRevoking] = useState(false);
@@ -39,8 +39,8 @@ export function OrgDetailDialog({ orgId, open, onOpenChange, onInvite }) {
       } else {
         toast.success(result.message || 'Đã gửi yêu cầu đồng bộ');
       }
-      // Reload org after short delay to reflect sync results
-      setTimeout(loadOrg, 3000);
+      loadOrg();
+      onDataChanged?.();
     } catch (err) { toast.error(err.message); }
     finally { setSyncing(false); }
   };
@@ -53,6 +53,7 @@ export function OrgDetailDialog({ orgId, open, onOpenChange, onInvite }) {
       toast.success('Đã cập nhật token');
       setTokenInput('');
       loadOrg();
+      onDataChanged?.();
     } catch (err) { toast.error(err.message); }
     finally { setSavingToken(false); }
   };
@@ -63,6 +64,7 @@ export function OrgDetailDialog({ orgId, open, onOpenChange, onInvite }) {
       await api.del(`/api/orgs/${orgId}/members/${memberId}`);
       toast.success(`Đã xoá ${email}`);
       loadOrg();
+      onDataChanged?.();
     } catch (err) { toast.error(err.message); }
   };
 
@@ -73,6 +75,7 @@ export function OrgDetailDialog({ orgId, open, onOpenChange, onInvite }) {
       const result = await api.post(`/api/orgs/${orgId}/revoke`, {});
       toast.success(`Thu hồi: ${result.revoked} lời mời`);
       loadOrg();
+      onDataChanged?.();
     } catch (err) { toast.error(err.message); }
     finally { setRevoking(false); }
   };

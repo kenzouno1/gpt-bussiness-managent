@@ -237,7 +237,7 @@ export function OrgsTab() {
         </div>
       )}
 
-      <OrgDetailDialog orgId={selectedId} open={dialogOpen} onOpenChange={setDialogOpen} onInvite={handleInvite} />
+      <OrgDetailDialog orgId={selectedId} open={dialogOpen} onOpenChange={setDialogOpen} onInvite={handleInvite} onDataChanged={loadOrgs} />
     </div>
   );
 }
