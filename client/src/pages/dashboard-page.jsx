@@ -8,13 +8,15 @@ import { api } from '@/lib/api';
 export function DashboardPage() {
   const [accounts, setAccounts] = useState([]);
   const [orgs, setOrgs] = useState([]);
+  const [groups, setGroups] = useState(null);
 
   useEffect(() => {
     api.get('/api/accounts').then(setAccounts).catch(() => {});
     api.get('/api/orgs').then(setOrgs).catch(() => {});
+    api.get('/api/accounts/stats/groups').then(setGroups).catch(() => {});
   }, []);
 
-  const totalMembers = orgs.reduce((s, o) => s + (o.member_count || 0), 0);
+  const totalMembers = groups?.joined?.count || 0;
 
   const cards = [
     { label: 'Tổng tài khoản', value: accounts.length, icon: Users, color: 'text-blue-500', bg: 'bg-blue-500/10', link: '/teams' },
