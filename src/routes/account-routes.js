@@ -73,8 +73,12 @@ router.post('/bulk', requireAdmin, (req, res) => {
 
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
   const insert = db.prepare(`
-    INSERT OR IGNORE INTO accounts (email, password, totp_secret, session_token)
+    INSERT INTO accounts (email, password, totp_secret, session_token)
     VALUES (?, ?, ?, ?)
+    ON CONFLICT(email) DO UPDATE SET
+      password = COALESCE(excluded.password, password),
+      totp_secret = COALESCE(excluded.totp_secret, totp_secret),
+      session_token = COALESCE(excluded.session_token, session_token)
   `);
 
   // Regex patterns for smart field detection
@@ -98,8 +102,9 @@ router.post('/bulk', requireAdmin, (req, res) => {
         }
 
         if (!email) { skipped++; continue; }
-        const result = insert.run(email, password, totp, token);
-        result.changes > 0 ? imported++ : skipped++;
+        const exists = db.prepare('SELECT 1 FROM accounts WHERE email = ?').get(email);
+        insert.run(email, password, totp, token);
+        exists ? skipped++ : imported++;
       } catch (err) {
         errors.push(`${line.substring(0, 50)}: ${err.message}`);
       }
