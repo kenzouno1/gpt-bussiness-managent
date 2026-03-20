@@ -213,6 +213,7 @@ router.post('/', (req, res) => {
   const findOrg = db.prepare('SELECT id FROM organizations WHERE chatgpt_account_id = ?');
   const insertOwner = db.prepare('INSERT OR IGNORE INTO org_members (org_id, account_id, role, invite_status) VALUES (?, ?, ?, ?)');
   const orgHasOwner = db.prepare('SELECT 1 FROM org_members WHERE org_id = ? AND role = ? LIMIT 1');
+  const accountIsOwner = db.prepare('SELECT 1 FROM org_members WHERE account_id = ? AND role = ? LIMIT 1');
 
   const newOrgIds = [];
   const importAll = db.transaction(() => {
@@ -234,6 +235,9 @@ router.post('/', (req, res) => {
         insertAcc.run(email, password, totp, token);
         const account = findAcc.get(email);
         if (!account) { skipped++; continue; }
+
+        // Skip if account already owns an org
+        if (accountIsOwner.get(account.id, 'owner')) { skipped++; continue; }
 
         // Create org named after email prefix
         const orgId = email.split('@')[0];

@@ -90,6 +90,10 @@ function importCSV(csvContent) {
   const orgHasOwner = db.prepare(
     `SELECT 1 FROM org_members WHERE org_id = ? AND role = 'owner' LIMIT 1`
   );
+  // Check if account is already owner of any org
+  const accountIsOwner = db.prepare(
+    `SELECT 1 FROM org_members WHERE account_id = ? AND role = 'owner' LIMIT 1`
+  );
 
   // Process in a transaction for performance
   const importAll = db.transaction((rows) => {
@@ -120,8 +124,11 @@ function importCSV(csvContent) {
           results.imported++; // new account
         }
 
-        // Auto-create org if chatgpt_account_id exists
+        // Auto-create org and link as owner — skip if account already owns an org
         if (jwtData.chatgpt_account_id) {
+          const account = findAccount.get(email);
+          if (account && accountIsOwner.get(account.id)) continue; // already an owner somewhere
+
           const orgName = `${email} - ${jwtData.chatgpt_account_id.substring(0, 8)}`;
           const orgResult = insertOrg.run({
             chatgpt_account_id: jwtData.chatgpt_account_id,
@@ -134,9 +141,8 @@ function importCSV(csvContent) {
             if (newOrg) results.newOrgIds.push(newOrg.id);
           }
 
-          // Link as owner only if org has no owner yet — skip if already owned
+          // Link as owner only if org has no owner yet
           const org = findOrg.get(jwtData.chatgpt_account_id);
-          const account = findAccount.get(email);
           if (org && account && !orgHasOwner.get(org.id)) {
             insertOwner.run({ org_id: org.id, account_id: account.id });
           }
