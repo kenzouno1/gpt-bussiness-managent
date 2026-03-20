@@ -67,9 +67,10 @@ async function syncOrg(orgId) {
       if (!email) continue;
       const account = db.prepare('SELECT id FROM accounts WHERE email = ?').get(email);
       if (account) {
-        const isOwner = account.id === admin.account_id;
         const existing = db.prepare('SELECT role FROM org_members WHERE org_id = ? AND account_id = ?').get(orgId, account.id);
-        const role = isOwner || existing?.role === 'owner' ? 'owner' : (m.role || 'member');
+        // Preserve existing owner role from import; also honor API role — don't assume token holder is owner
+        const apiRole = m.role || 'member';
+        const role = existing?.role === 'owner' || apiRole === 'owner' ? 'owner' : apiRole;
         db.prepare(`INSERT OR REPLACE INTO org_members (org_id, account_id, role, invite_status) VALUES (?, ?, ?, 'joined')`)
           .run(orgId, account.id, role);
         synced.members++;

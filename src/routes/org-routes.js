@@ -117,19 +117,34 @@ router.post('/:id/invite', async (req, res) => {
     `).all(slotsLeft);
   }
 
+  // Reserve accounts immediately with 'pending' status to prevent
+  // concurrent bulk invites from picking the same accounts for different orgs
+  const reserveMember = db.prepare(`
+    INSERT OR IGNORE INTO org_members (org_id, account_id, role, invited_at, invite_status)
+    VALUES (?, ?, 'member', CURRENT_TIMESTAMP, 'pending')
+  `);
+  const reserveAll = db.transaction(() => {
+    const reserved = [];
+    for (const account of accountsToInvite) {
+      const r = reserveMember.run(req.params.id, account.id);
+      if (r.changes > 0) reserved.push(account);
+    }
+    return reserved;
+  });
+  accountsToInvite = reserveAll();
+
   const results = { invited: 0, failed: 0, errors: [] };
-  const insertMember = db.prepare(`
-    INSERT OR REPLACE INTO org_members (org_id, account_id, role, invited_at, invite_status)
-    VALUES (?, ?, 'member', CURRENT_TIMESTAMP, ?)
+  const updateMember = db.prepare(`
+    UPDATE org_members SET invite_status = ? WHERE org_id = ? AND account_id = ?
   `);
 
   for (const account of accountsToInvite) {
     const result = await inviteToOrg(token, account.email);
     if (result.success) {
-      insertMember.run(req.params.id, account.id, 'sent');
+      updateMember.run('sent', req.params.id, account.id);
       results.invited++;
     } else {
-      insertMember.run(req.params.id, account.id, 'failed');
+      updateMember.run('failed', req.params.id, account.id);
       results.failed++;
       results.errors.push({ email: account.email, error: result.error });
     }
