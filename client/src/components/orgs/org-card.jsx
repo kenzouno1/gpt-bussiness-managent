@@ -61,7 +61,7 @@ export function OrgCard({ org, selectable, isSelected, onToggleSelect, onSelect,
             </div>
             <div className="flex items-center gap-2">
               <span className="w-10 shrink-0 font-medium text-muted-foreground">Pass</span>
-              <CopyField value={org.owner_password} label="password" className="text-[11px] font-mono" />
+              <CopyField value={org.owner_password} label="password" secret className="text-[11px] font-mono" />
             </div>
             {org.owner_totp_secret && (
               <div className="flex items-center gap-2">

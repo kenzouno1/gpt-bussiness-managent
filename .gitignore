@@ -1,6 +1,31 @@
+# Dependencies
+node_modules/
+
+# Environment
 .env
 .env.*
-node_modules/
+
+# Database
 *.db
 data/
+
+# Data files
 *.csv
+
+# Build output
+src/public/assets/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Claude
+.claude/

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Search, RefreshCw, Plus, Users, ShieldCheck, UserX, KeyRound, UserCheck, Send, Eye, Trash2, Pencil } from 'lucide-react';
+import { Search, RefreshCw, Plus, Users, ShieldCheck, UserX, UserCheck, Send, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -7,10 +7,22 @@ import { Card, CardContent } from '@/components/ui/card';
 import { AccountDetailSheet } from '@/components/accounts/account-detail-sheet';
 import { AccountFormDialog } from '@/components/accounts/account-form-dialog';
 import { BulkImportDialog } from '@/components/accounts/bulk-import-dialog';
-import { TotpDisplay } from '@/components/accounts/totp-display';
-import { CopyField } from '@/components/ui/copy-field';
+import { AccountCard } from '@/components/accounts/account-card';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
+
+// Generate page numbers: [1, 2, '...', 8, 9, 10] style
+function pageRange(current, total) {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const pages = new Set([1, 2, total - 1, total, current - 1, current, current + 1]);
+  const sorted = [...pages].filter(p => p >= 1 && p <= total).sort((a, b) => a - b);
+  const result = [];
+  for (let i = 0; i < sorted.length; i++) {
+    if (i > 0 && sorted[i] - sorted[i - 1] > 1) result.push('...');
+    result.push(sorted[i]);
+  }
+  return result;
+}
 
 const FILTERS = [
   { key: 'all', label: 'Tất cả', icon: Users, color: '#3b82f6' },
@@ -31,6 +43,8 @@ export function AccountsPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [editId, setEditId] = useState(null);
   const [groups, setGroups] = useState({ orphan: new Set(), invited: new Set(), joined: new Set() });
+  const [page, setPage] = useState(1);
+  const perPage = 20;
 
   const load = async () => {
     setLoading(true);
@@ -72,6 +86,12 @@ export function AccountsPage() {
       return matchSearch && matchFilter;
     });
   }, [accounts, search, filter, groups]);
+
+  // Reset page when filter/search changes
+  useEffect(() => { setPage(1); }, [search, filter]);
+
+  const totalPages = Math.ceil(filtered.length / perPage);
+  const paginated = filtered.slice((page - 1) * perPage, page * perPage);
 
   const handleDelete = async (id) => {
     if (!confirm('Xóa tài khoản này?')) return;
@@ -144,64 +164,40 @@ export function AccountsPage() {
           <p className="mt-4 text-sm text-muted-foreground">Không tìm thấy tài khoản.</p>
         </div>
       ) : (
-        <div className="space-y-2">
-          {filtered.map(acc => (
-            <AccountRow key={acc.id} account={acc}
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {paginated.map(acc => (
+            <AccountCard key={acc.id} account={acc}
               status={groups.joined.has(acc.id) ? 'joined' : groups.invited.has(acc.id) ? 'invited' : 'orphan'}
-              onView={() => { setSelectedId(acc.id); setSheetOpen(true); }}
+              onSelect={() => { setSelectedId(acc.id); setSheetOpen(true); }}
               onEdit={() => { setEditId(acc.id); setFormOpen(true); }}
               onDelete={() => handleDelete(acc.id)} />
           ))}
         </div>
       )}
 
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-1.5 pt-2">
+          <Button variant="outline" size="icon" className="h-8 w-8" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          {pageRange(page, totalPages).map((p, i) =>
+            p === '...' ? (
+              <span key={`dot-${i}`} className="px-1 text-sm text-muted-foreground">...</span>
+            ) : (
+              <Button key={p} variant={p === page ? 'default' : 'outline'} size="icon" className="h-8 w-8 text-xs" onClick={() => setPage(p)}>
+                {p}
+              </Button>
+            )
+          )}
+          <Button variant="outline" size="icon" className="h-8 w-8" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
+
       <AccountDetailSheet accountId={selectedId} open={sheetOpen} onOpenChange={setSheetOpen} />
       <AccountFormDialog accountId={editId} open={formOpen} onOpenChange={setFormOpen} onSaved={load} />
     </div>
-  );
-}
-
-const statusBadge = {
-  orphan: { label: 'Chưa có nhóm', class: 'bg-amber-500/15 text-amber-600 border-amber-500/30' },
-  invited: { label: 'Đang mời', class: 'bg-purple-500/15 text-purple-600 border-purple-500/30' },
-  joined: { label: 'Đã tham gia', class: 'bg-green-500/15 text-green-600 border-green-500/30' },
-};
-
-function AccountRow({ account, status = 'orphan', onView, onEdit, onDelete }) {
-  const badge = statusBadge[status];
-  return (
-    <Card className="transition-colors hover:bg-muted/30">
-      <CardContent className="flex items-center gap-4 p-3">
-        <div className="min-w-0 flex-1">
-          <CopyField value={account.email} label="email" className="text-sm font-medium" />
-          <div className="mt-0.5 flex gap-1">
-            <span className={`inline-flex items-center rounded-full border px-1.5 py-0 text-[9px] font-medium ${badge.class}`}>
-              {badge.label}
-            </span>
-            {account.totp_secret && <Badge variant="secondary" className="h-4 text-[9px]">2FA</Badge>}
-          </div>
-        </div>
-
-        <div className="hidden w-32 sm:block">
-          <CopyField value={account.password} label="password" className="text-xs font-mono text-muted-foreground" />
-        </div>
-
-        <div className="hidden w-36 lg:block">
-          <TotpDisplay secret={account.totp_secret} />
-        </div>
-
-        <div className="flex items-center gap-0.5">
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onView} title="Chi tiết">
-            <Eye className="h-3.5 w-3.5" />
-          </Button>
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onEdit} title="Sửa">
-            <Pencil className="h-3.5 w-3.5" />
-          </Button>
-          <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={onDelete} title="Xóa">
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
   );
 }

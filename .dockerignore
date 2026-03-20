@@ -1,0 +1,14 @@
+node_modules/
+client/node_modules/
+.env
+.env.*
+*.db
+data/
+*.csv
+*.log
+.git/
+.claude/
+.vscode/
+.idea/
+plans/
+docs/

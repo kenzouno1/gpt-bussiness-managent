@@ -4,14 +4,14 @@ const { checkToken, inviteToOrg, listOrgMembers, listInvites, revokeInvite } = r
 
 const router = Router();
 
-// Helper: get admin session token for an org
+// Helper: get admin session token for an org (returns token + account_id)
 function getAdminToken(orgId) {
   const row = db.prepare(`
-    SELECT a.session_token FROM org_members om
+    SELECT a.session_token, a.id as account_id FROM org_members om
     JOIN accounts a ON a.id = om.account_id
     WHERE om.org_id = ? AND a.session_token IS NOT NULL LIMIT 1
   `).get(orgId);
-  return row?.session_token || null;
+  return row || null;
 }
 
 // Auto-expire invites older than 1 day — remove from DB so accounts become available again
@@ -65,11 +65,12 @@ router.post('/:id/sync', async (req, res) => {
   const org = db.prepare('SELECT * FROM organizations WHERE id = ?').get(req.params.id);
   if (!org) return res.status(404).json({ error: 'Org not found' });
 
-  const token = getAdminToken(req.params.id);
-  if (!token) {
+  const admin = getAdminToken(req.params.id);
+  if (!admin) {
     db.prepare(`UPDATE organizations SET sync_status = 'no_credential', sync_error = 'No session token', last_synced = CURRENT_TIMESTAMP WHERE id = ?`).run(req.params.id);
     return res.json({ success: false, sync_status: 'no_credential', error: 'No session token' });
   }
+  const token = admin.session_token;
 
   const membersResult = await listOrgMembers(token);
   const invitesResult = await listInvites(token);
@@ -91,8 +92,12 @@ router.post('/:id/sync', async (req, res) => {
       if (!email) continue;
       const account = db.prepare('SELECT id FROM accounts WHERE email = ?').get(email);
       if (account) {
+        // Mark the account that provides the session token as owner
+        const isOwner = account.id === admin.account_id;
+        const existing = db.prepare('SELECT role FROM org_members WHERE org_id = ? AND account_id = ?').get(req.params.id, account.id);
+        const role = isOwner || existing?.role === 'owner' ? 'owner' : (m.role || 'member');
         db.prepare(`INSERT OR REPLACE INTO org_members (org_id, account_id, role, invite_status) VALUES (?, ?, ?, 'joined')`)
-          .run(req.params.id, account.id, m.role || 'member');
+          .run(req.params.id, account.id, role);
         synced.members++;
       }
     }
@@ -132,8 +137,9 @@ router.post('/:id/invite', async (req, res) => {
   const org = db.prepare('SELECT * FROM organizations WHERE id = ?').get(req.params.id);
   if (!org) return res.status(404).json({ error: 'Org not found' });
 
-  const token = getAdminToken(req.params.id);
-  if (!token) return res.status(400).json({ error: 'No session token' });
+  const admin = getAdminToken(req.params.id);
+  if (!admin) return res.status(400).json({ error: 'No session token' });
+  const token = admin.session_token;
 
   const MAX_INVITE = 4;
   // Only count joined members (not pending invites) toward limit
@@ -187,8 +193,9 @@ router.post('/:id/revoke', async (req, res) => {
   const org = db.prepare('SELECT * FROM organizations WHERE id = ?').get(req.params.id);
   if (!org) return res.status(404).json({ error: 'Org not found' });
 
-  const token = getAdminToken(req.params.id);
-  if (!token) return res.status(400).json({ error: 'No session token' });
+  const admin = getAdminToken(req.params.id);
+  if (!admin) return res.status(400).json({ error: 'No session token' });
+  const token = admin.session_token;
 
   const invitesResult = await listInvites(token);
   if (!invitesResult.success) return res.json(invitesResult);
@@ -275,12 +282,13 @@ router.post('/validate-all', async (req, res) => {
   let healthy = 0, invalid = 0, noToken = 0;
 
   for (const org of orgs) {
-    const token = getAdminToken(org.id);
-    if (!token) {
+    const admin = getAdminToken(org.id);
+    if (!admin) {
       db.prepare(`UPDATE organizations SET sync_status = 'no_credential', sync_error = 'No session token', last_synced = CURRENT_TIMESTAMP WHERE id = ?`).run(org.id);
       noToken++;
       continue;
     }
+    const token = admin.session_token;
 
     const result = await checkToken(token);
     if (result.success) {
@@ -315,8 +323,13 @@ router.post('/validate-all', async (req, res) => {
 
       // Update org's chatgpt_account_id to the correct team workspace ID
       if (matchedId && matchedId !== org.chatgpt_account_id) {
-        console.log(`  Fix org ID: ${org.chatgpt_account_id} → ${matchedId}`);
-        db.prepare('UPDATE organizations SET chatgpt_account_id = ? WHERE id = ?').run(matchedId, org.id);
+        const existing = db.prepare('SELECT id FROM organizations WHERE chatgpt_account_id = ? AND id != ?').get(matchedId, org.id);
+        if (existing) {
+          console.log(`  SKIP org ID update: ${matchedId} already belongs to org #${existing.id}`);
+        } else {
+          console.log(`  Fix org ID: ${org.chatgpt_account_id} → ${matchedId}`);
+          db.prepare('UPDATE organizations SET chatgpt_account_id = ? WHERE id = ?').run(matchedId, org.id);
+        }
       }
 
       if (!accData) {
@@ -388,6 +401,16 @@ router.put('/:id', (req, res) => {
     }
   }
 
+  res.json({ success: true });
+});
+
+// Remove a member from org (cannot remove owner)
+router.delete('/:id/members/:memberId', (req, res) => {
+  const member = db.prepare('SELECT * FROM org_members WHERE id = ? AND org_id = ?').get(req.params.memberId, req.params.id);
+  if (!member) return res.status(404).json({ error: 'Member not found' });
+  if (member.role === 'owner') return res.status(400).json({ error: 'Cannot remove owner' });
+
+  db.prepare('DELETE FROM org_members WHERE id = ?').run(req.params.memberId);
   res.json({ success: true });
 });
 

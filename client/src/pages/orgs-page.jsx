@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Search, RefreshCw, Building2, Users, Send, CheckCircle, CheckSquare, Square } from 'lucide-react';
+import { Search, RefreshCw, Building2, Users, Send, CheckCircle, CheckSquare, Square, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -8,6 +8,19 @@ import { OrgCard } from '@/components/orgs/org-card';
 import { OrgDetailDialog } from '@/components/orgs/org-detail-dialog';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
+
+// Generate page numbers: [1, 2, '...', 8, 9, 10] style
+function pageRange(current, total) {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const pages = new Set([1, 2, total - 1, total, current - 1, current, current + 1]);
+  const sorted = [...pages].filter(p => p >= 1 && p <= total).sort((a, b) => a - b);
+  const result = [];
+  for (let i = 0; i < sorted.length; i++) {
+    if (i > 0 && sorted[i] - sorted[i - 1] > 1) result.push('...');
+    result.push(sorted[i]);
+  }
+  return result;
+}
 
 export function OrgsPage() {
   const [orgs, setOrgs] = useState([]);
@@ -18,6 +31,8 @@ export function OrgsPage() {
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState(new Set());
   const [bulkInviting, setBulkInviting] = useState(false);
+  const [page, setPage] = useState(1);
+  const perPage = 20;
 
   const loadOrgs = async () => {
     setLoading(true);
@@ -43,6 +58,12 @@ export function OrgsPage() {
     const q = search.toLowerCase();
     return orgs.filter(o => o.name.toLowerCase().includes(q) || o.chatgpt_account_id?.toLowerCase().includes(q));
   }, [orgs, search]);
+
+  // Reset page when search changes
+  useEffect(() => { setPage(1); }, [search]);
+
+  const totalPages = Math.ceil(filtered.length / perPage);
+  const paginated = filtered.slice((page - 1) * perPage, page * perPage);
 
   const handleSelect = (id) => { setSelectedId(id); setDialogOpen(true); };
 
@@ -177,12 +198,33 @@ export function OrgsPage() {
         </div>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {filtered.map(org => (
+          {paginated.map(org => (
             <OrgCard key={org.id} org={org}
               selectable={selectMode} isSelected={selected.has(org.id)}
               onToggleSelect={() => toggleSelect(org.id)}
               onSelect={handleSelect} onInvite={handleInvite} onDelete={handleDelete} />
           ))}
+        </div>
+      )}
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-1.5 pt-2">
+          <Button variant="outline" size="icon" className="h-8 w-8" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          {pageRange(page, totalPages).map((p, i) =>
+            p === '...' ? (
+              <span key={`dot-${i}`} className="px-1 text-sm text-muted-foreground">...</span>
+            ) : (
+              <Button key={p} variant={p === page ? 'default' : 'outline'} size="icon" className="h-8 w-8 text-xs" onClick={() => setPage(p)}>
+                {p}
+              </Button>
+            )
+          )}
+          <Button variant="outline" size="icon" className="h-8 w-8" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>
+            <ChevronRight className="h-4 w-4" />
+          </Button>
         </div>
       )}
 

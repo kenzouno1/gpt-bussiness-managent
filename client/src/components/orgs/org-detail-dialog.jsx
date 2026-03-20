@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Send, Undo2, RefreshCw, Users, UserPlus, KeyRound, Save } from 'lucide-react';
+import { Send, Undo2, RefreshCw, Users, UserPlus, KeyRound, Save, X } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -55,6 +55,15 @@ export function OrgDetailDialog({ orgId, open, onOpenChange, onInvite }) {
       loadOrg();
     } catch (err) { toast.error(err.message); }
     finally { setSavingToken(false); }
+  };
+
+  const handleRemoveMember = async (memberId, email) => {
+    if (!confirm(`Xoá ${email} khỏi nhóm?`)) return;
+    try {
+      await api.del(`/api/orgs/${orgId}/members/${memberId}`);
+      toast.success(`Đã xoá ${email}`);
+      loadOrg();
+    } catch (err) { toast.error(err.message); }
   };
 
   const handleRevoke = async () => {
@@ -124,11 +133,20 @@ export function OrgDetailDialog({ orgId, open, onOpenChange, onInvite }) {
               {joinedMembers.map(m => (
                 <div key={m.id} className="flex items-center justify-between rounded-lg border px-3 py-2">
                   <span className="truncate text-sm">{m.email}</span>
-                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                    m.role === 'owner' ? statusConfig.owner.color : statusConfig.joined.color
-                  }`}>
-                    {m.role === 'owner' ? 'Owner' : 'Member'}
-                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                      m.role === 'owner' ? statusConfig.owner.color : statusConfig.joined.color
+                    }`}>
+                      {m.role === 'owner' ? 'Owner' : 'Member'}
+                    </span>
+                    {m.role !== 'owner' && (
+                      <button onClick={() => handleRemoveMember(m.id, m.email)}
+                        className="rounded p-0.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                        title="Xoá khỏi nhóm">
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
