@@ -238,16 +238,15 @@ router.post('/', (req, res) => {
         const account = findAcc.get(email);
         if (!account) { skipped++; continue; }
 
-        // Skip org creation if account already belongs to an org
+        // Skip if account already belongs to an org — don't reassign ownership
         const existingOrg = accountHasOrg.get(account.id);
         if (existingOrg) {
-          upsertOwner.run(existingOrg.org_id, account.id);
-          created++; continue;
+          skipped++; continue;
         }
 
-        // Create org named after email prefix
-        const orgId = email.split('@')[0];
-        const orgName = `${email.split('@')[0]}`;
+        // Create org keyed by full email to avoid collisions between same-prefix different-domain accounts
+        const orgId = email;
+        const orgName = email.split('@')[0];
         const orgResult = insertOrg.run(orgId, orgName, 'free');
         const org = findOrg.get(orgId);
         if (!org) { skipped++; continue; }
