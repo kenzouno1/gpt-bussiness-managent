@@ -86,7 +86,9 @@ async function syncOrg(orgId) {
         apiAccountIds.add(account.id);
         // Skip owner — never overwrite owner role from API
         if (account.id === ownerAccountId) continue;
-        const role = m.role || 'member';
+        // Never assign 'owner' from API — only the original imported owner keeps that role
+        const apiRole = m.role || 'member';
+        const role = apiRole === 'owner' ? 'member' : apiRole;
         db.prepare(`INSERT OR REPLACE INTO org_members (org_id, account_id, role, invite_status) VALUES (?, ?, ?, 'joined')`)
           .run(orgId, account.id, role);
         synced.members++;

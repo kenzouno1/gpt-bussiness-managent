@@ -52,4 +52,17 @@ if (!accountCols.includes('token_checked_at')) {
   db.exec("ALTER TABLE accounts ADD COLUMN token_checked_at TEXT");
 }
 
+// Fix: ensure each org has exactly 1 owner (sync bug set all members to 'owner')
+const orgsWithMultiOwners = db.prepare(
+  "SELECT org_id FROM org_members WHERE role = 'owner' GROUP BY org_id HAVING COUNT(*) > 1"
+).all();
+for (const { org_id } of orgsWithMultiOwners) {
+  const firstOwner = db.prepare(
+    "SELECT id FROM org_members WHERE org_id = ? AND role = 'owner' ORDER BY id ASC LIMIT 1"
+  ).get(org_id);
+  db.prepare(
+    "UPDATE org_members SET role = 'member' WHERE org_id = ? AND role = 'owner' AND id != ?"
+  ).run(org_id, firstOwner.id);
+}
+
 module.exports = db;
